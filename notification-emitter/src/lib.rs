@@ -49,7 +49,7 @@ pub struct ImageParameters {
     pub untrusted_data: Vec<u8>,
 }
 
-pub fn serialize_image(
+fn serialize_image(
     ImageParameters {
         untrusted_width,
         untrusted_height,
