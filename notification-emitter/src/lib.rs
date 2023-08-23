@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use zbus::{dbus_proxy, zvariant::Value};
+use zbus::{dbus_proxy, zvariant::Value, Connection};
 #[dbus_proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
@@ -127,96 +127,158 @@ impl TrustedStr {
     }
 }
 
-pub async fn send_notification(
-    connection: &NotificationsProxy<'_>,
-    suppress_sound: bool,
-    transient: bool,
-    urgency: Option<Urgency>,
-    // This is just an ID, and it can't be validated in a non-racy way anyway.
-    // I assume that any decent notification daemon will handle an invalid ID
-    // value correctly, but this code should probably test for this at the start
-    // so that it cannot be used with a server that crashes in this case.
-    replaces: u32,
-    summary: TrustedStr,
-    // FIXME: handle markup
-    body: TrustedStr,
-    actions: Vec<TrustedStr>,
-    // this is santiized internally
-    category: Option<String>,
-    expire_timeout: i32,
-    image: Option<ImageParameters>,
-) -> zbus::Result<u32> {
-    if expire_timeout < -1 {
-        return Err(zbus::Error::Unsupported);
-    }
+pub struct NotificationEmitter {
+    proxy: NotificationsProxy<'static>,
+    body_markup: bool,
+    persistence: bool,
+}
 
-    // In the future this should be a validated application name prefixed
-    // by the qube name.
-    let application_name = "";
-
-    // Ideally the icon would be associated with the calling application,
-    // with an image suitably processed by Qubes OS to indicate trust.
-    // However, there is no good way to do that in practice, so just pass
-    // an empty string to indicate "no icon".
-    let icon = "";
-
-    // this is slow but I don't care, the dbus call is orders of magnitude slower
-    let actions: Vec<&str> = actions.iter().map(|x| &*x.0).collect();
-
-    // Set up the hints
-    let mut hints = HashMap::new();
-    if let Some(urgency) = urgency {
-        // this is a hack to appease the borrow checker
-        let urgency = match urgency {
-            Urgency::Low => &0,
-            Urgency::Normal => &1,
-            Urgency::Critical => &2,
-        };
-        hints.insert(
-            "urgency",
-            <zbus::zvariant::Value<'_> as From<&'_ u8>>::from(urgency),
-        );
-    }
-    if suppress_sound {
-        hints.insert("suppress-sound", Value::from(&true));
-    }
-    if transient {
-        hints.insert("transient", Value::from(&true));
-    }
-    if let Some(ref category) = category {
-        let category = category.as_bytes();
-        match category.get(0) {
-            Some(b'a'..=b'z') => {}
-            _ => return Err(zbus::Error::MissingParameter("Invalid category")),
-        }
-        for i in &category[1..] {
-            match i {
-                b'a'..=b'z' | b'.' => {}
-                _ => return Err(zbus::Error::MissingParameter("Invalid category")),
+impl NotificationEmitter {
+    pub async fn new() -> zbus::Result<Self> {
+        let connection = Connection::session().await?;
+        let proxy = NotificationsProxy::new(&connection).await?;
+        let capabilities = proxy.get_capabilities().await?.0;
+        let mut body_markup = false;
+        let mut persistence = false;
+        for capability in capabilities.into_iter() {
+            match &*capability {
+                "persistence" => persistence = true,
+                "body-markup" => body_markup = true,
+                _ => eprintln!("Unknown capability {} detected", capability),
             }
         }
-        // no underflow possible, category.get() checks for the empty slice
-        if category[category.len() - 1] == b'.' {
-            return Err(zbus::Error::MissingParameter("Invalid category"));
-        }
-        hints.insert("category", Value::from(category));
+        eprintln!(
+            "Server capabilities: body markup {}, persistence {}",
+            body_markup, persistence
+        );
+        Ok(Self {
+            proxy,
+            body_markup,
+            persistence,
+        })
     }
-    if let Some(image) = image {
-        match serialize_image(image) {
-            Ok(value) => hints.insert("image-data", value),
-            Err(e) => return Err(zbus::Error::MissingParameter(e)),
-        };
-    }
-    connection
-        .notify(
-            application_name,
-            replaces,
-            icon,
-            &*summary.0,
-            &*body.0,
-            &*actions,
-            &hints,
-            expire_timeout,
-        )
-        .await
 }
+
+impl NotificationEmitter {
+    pub fn persistence(&self) -> bool {
+        self.persistence
+    }
+    pub fn body_markup(&self) -> bool {
+        false
+    }
+    pub async fn send_notification(
+        &self,
+        suppress_sound: bool,
+        transient: bool,
+        urgency: Option<Urgency>,
+        // This is just an ID, and it can't be validated in a non-racy way anyway.
+        // I assume that any decent notification daemon will handle an invalid ID
+        // value correctly, but this code should probably test for this at the start
+        // so that it cannot be used with a server that crashes in this case.
+        replaces: u32,
+        summary: TrustedStr,
+        // FIXME: handle markup
+        body: TrustedStr,
+        actions: Vec<TrustedStr>,
+        // this is santiized internally
+        category: Option<String>,
+        expire_timeout: i32,
+        image: Option<ImageParameters>,
+    ) -> zbus::Result<u32> {
+        if expire_timeout < -1 {
+            return Err(zbus::Error::Unsupported);
+        }
+
+        // In the future this should be a validated application name prefixed
+        // by the qube name.
+        let application_name = "";
+
+        // Ideally the icon would be associated with the calling application,
+        // with an image suitably processed by Qubes OS to indicate trust.
+        // However, there is no good way to do that in practice, so just pass
+        // an empty string to indicate "no icon".
+        let icon = "";
+
+        // this is slow but I don't care, the dbus call is orders of magnitude slower
+        let actions: Vec<&str> = actions.iter().map(|x| &*x.0).collect();
+
+        // Set up the hints
+        let mut hints = HashMap::new();
+        if let Some(urgency) = urgency {
+            // this is a hack to appease the borrow checker
+            let urgency = match urgency {
+                Urgency::Low => &0,
+                Urgency::Normal => &1,
+                Urgency::Critical => &2,
+            };
+            hints.insert(
+                "urgency",
+                <zbus::zvariant::Value<'_> as From<&'_ u8>>::from(urgency),
+            );
+        }
+        if suppress_sound {
+            hints.insert("suppress-sound", Value::from(&true));
+        }
+        if transient {
+            hints.insert("transient", Value::from(&true));
+        }
+        if let Some(ref category) = category {
+            let category = category.as_bytes();
+            match category.get(0) {
+                Some(b'a'..=b'z') => {}
+                _ => return Err(zbus::Error::MissingParameter("Invalid category")),
+            }
+            for i in &category[1..] {
+                match i {
+                    b'a'..=b'z' | b'.' => {}
+                    _ => return Err(zbus::Error::MissingParameter("Invalid category")),
+                }
+            }
+            // no underflow possible, category.get() checks for the empty slice
+            if category[category.len() - 1] == b'.' {
+                return Err(zbus::Error::MissingParameter("Invalid category"));
+            }
+            hints.insert("category", Value::from(category));
+        }
+        if let Some(image) = image {
+            match serialize_image(image) {
+                Ok(value) => hints.insert("image-data", value),
+                Err(e) => return Err(zbus::Error::MissingParameter(e)),
+            };
+        }
+        let mut escaped_body;
+        if self.body_markup {
+            // Body markup must be escaped.  FIXME: validate it.
+            escaped_body = String::with_capacity(body.0.as_bytes().len());
+            // this is slow and can easily be made much faster with
+            // trivially correct `unsafe`, but the dbus call (which
+            // actually renders text on screen!) will be orders of
+            // magnitude slower so we do not care.
+            for i in body.0.chars() {
+                match i {
+                    '<' => escaped_body.push_str("&lt;"),
+                    '>' => escaped_body.push_str("&gt;"),
+                    '&' => escaped_body.push_str("&amp;"),
+                    '\'' => escaped_body.push_str("&apos;"),
+                    '"' => escaped_body.push_str("&quot;"),
+                    x => escaped_body.push(x),
+                }
+            }
+        } else {
+            escaped_body = body.0.clone()
+        }
+        self.proxy
+            .notify(
+                application_name,
+                replaces,
+                icon,
+                &*summary.0,
+                &*escaped_body,
+                &*actions,
+                &hints,
+                expire_timeout,
+            )
+            .await
+    }
+}
+
