@@ -144,6 +144,7 @@ pub async fn send_notification(
     // this is santiized internally
     category: Option<String>,
     expire_timeout: i32,
+    image: Option<ImageParameters>,
 ) -> zbus::Result<u32> {
     if expire_timeout < -1 {
         return Err(zbus::Error::Unsupported);
@@ -199,6 +200,12 @@ pub async fn send_notification(
             return Err(zbus::Error::MissingParameter("Invalid category"));
         }
         hints.insert("category", Value::from(category));
+    }
+    if let Some(image) = image {
+        match serialize_image(image) {
+            Ok(value) => hints.insert("image-data", value),
+            Err(e) => return Err(zbus::Error::MissingParameter(e)),
+        };
     }
     connection
         .notify(
