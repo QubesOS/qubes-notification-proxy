@@ -1,0 +1,10 @@
+[package]
+name = "notification_proxy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+notification-emitter = { version = "0.1.0", path = "notification-emitter" }
+zbus = "3.14.1"

@@ -37,7 +37,7 @@ pub const MAX_SIZE: usize = 1usize << 21; // This is 2MiB, more than enough
 pub const MAX_WIDTH: i32 = 255;
 pub const MAX_HEIGHT: i32 = 255;
 
-fn serialize_image(
+pub fn serialize_image(
     untrusted_width: i32,
     untrusted_height: i32,
     untrusted_rowstride: i32,
@@ -113,10 +113,10 @@ impl TrustedStr {
     }
 }
 
-async fn send_notification(
+pub async fn send_notification(
     connection: &NotificationsProxy<'_>,
-    _suppress_sound: bool,
-    _transient: bool,
+    suppress_sound: bool,
+    transient: bool,
     urgency: Option<Urgency>,
     // This is just an ID, and it can't be validated in a non-racy way anyway.
     // I assume that any decent notification daemon will handle an invalid ID
@@ -126,7 +126,7 @@ async fn send_notification(
     summary: TrustedStr,
     body: TrustedStr,
     actions: Vec<TrustedStr>,
-    _category: Option<TrustedStr>,
+    category: Option<TrustedStr>,
     expire_timeout: i32,
 ) -> zbus::Result<u32> {
     if expire_timeout < -1 {
@@ -157,6 +157,12 @@ async fn send_notification(
             "urgency",
             <zbus::zvariant::Value<'_> as From<&'_ u8>>::from(urgency),
         );
+    }
+    if suppress_sound {
+        hints.insert("suppress-sound", Value::from(&true));
+    }
+    if transient {
+        hints.insert("transient", Value::from(&true));
     }
     connection
         .notify(
