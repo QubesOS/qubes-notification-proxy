@@ -194,6 +194,7 @@ pub async fn send_notification(
                 _ => return Err(zbus::Error::MissingParameter("Invalid category")),
             }
         }
+        // no underflow possible, category.get() checks for the empty slice
         if category[category.len() - 1] == b'.' {
             return Err(zbus::Error::MissingParameter("Invalid category"));
         }
