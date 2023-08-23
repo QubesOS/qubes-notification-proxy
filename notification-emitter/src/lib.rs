@@ -180,7 +180,7 @@ impl NotificationEmitter {
         // FIXME: handle markup
         body: TrustedStr,
         actions: Vec<TrustedStr>,
-        // this is santiized internally
+        // this is santized internally
         category: Option<String>,
         expire_timeout: i32,
         image: Option<ImageParameters>,
