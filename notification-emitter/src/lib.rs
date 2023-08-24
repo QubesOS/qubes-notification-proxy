@@ -143,6 +143,7 @@ pub struct NotificationEmitter {
     proxy: NotificationsProxy<'static>,
     body_markup: bool,
     persistence: bool,
+    sound: bool,
 }
 
 impl NotificationEmitter {
@@ -152,10 +153,12 @@ impl NotificationEmitter {
         let capabilities = proxy.get_capabilities().await?.0;
         let mut body_markup = false;
         let mut persistence = false;
+        let mut sound = false;
         for capability in capabilities.into_iter() {
             match &*capability {
                 "persistence" => persistence = true,
                 "body-markup" => body_markup = true,
+                "sound" => sound = true,
                 _ => eprintln!("Unknown capability {} detected", capability),
             }
         }
@@ -167,6 +170,7 @@ impl NotificationEmitter {
             proxy,
             body_markup,
             persistence,
+            sound,
         })
     }
 }
@@ -189,7 +193,8 @@ impl NotificationEmitter {
         // so that it cannot be used with a server that crashes in this case.
         replaces: u32,
         summary: TrustedStr,
-        // FIXME: handle markup
+        // FIXME: support markup (strictly sanitized and validated) if the server
+        // supports it.
         body: TrustedStr,
         actions: Vec<TrustedStr>,
         // this is sanitized internally
@@ -211,7 +216,7 @@ impl NotificationEmitter {
         // an empty string to indicate "no icon".
         let icon = "";
 
-        // this is slow but I don't care, the dbus call is orders of magnitude slower
+        // this is slow but I don't care, the D-Bus call is orders of magnitude slower
         let actions: Vec<&str> = actions.iter().map(|x| &*x.0).collect();
 
         // Set up the hints
@@ -228,10 +233,10 @@ impl NotificationEmitter {
                 <zbus::zvariant::Value<'_> as From<&'_ u8>>::from(urgency),
             );
         }
-        if suppress_sound {
+        if suppress_sound && self.sound {
             hints.insert("suppress-sound", Value::from(&true));
         }
-        if transient {
+        if transient && self.persistence {
             hints.insert("transient", Value::from(&true));
         }
         if let Some(ref category) = category {
@@ -263,7 +268,7 @@ impl NotificationEmitter {
             // Body markup must be escaped.  FIXME: validate it.
             escaped_body = String::with_capacity(body.0.as_bytes().len());
             // this is slow and can easily be made much faster with
-            // trivially correct `unsafe`, but the dbus call (which
+            // trivially correct `unsafe`, but the D-Bus call (which
             // actually renders text on screen!) will be orders of
             // magnitude slower so we do not care.
             for i in body.0.chars() {
