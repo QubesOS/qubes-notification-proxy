@@ -10,4 +10,4 @@ notification-emitter = { version = "0.1.0", path = "notification-emitter" }
 zbus = "3.14.1"
 
 [workspace]
-members = ["notification-emitter"]
+members = ["notification-emitter", "notification-proxy"]
