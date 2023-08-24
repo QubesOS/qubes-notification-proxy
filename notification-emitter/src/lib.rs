@@ -61,35 +61,47 @@ fn serialize_image(
     }: ImageParameters,
 ) -> Result<Value<'static>, &'static str> {
     // sanitize start
-    let has_alpha = untrusted_has_alpha; // no sanitization required
-    if untrusted_width < 1 || untrusted_height < 1 || untrusted_rowstride < 3 {
-        return Err("Too small width, height, or stride");
-    }
 
-    if untrusted_data.len() > MAX_SIZE {
-        return Err("Too much data");
-    }
+    // booleans do not need to be sanitized
+    let has_alpha = untrusted_has_alpha;
 
+    // bits per sample must be 8
     if untrusted_bits_per_sample != 8 {
         return Err("Wrong number of bits per sample");
     }
 
     let bits_per_sample = untrusted_bits_per_sample;
-    let data = untrusted_data;
-    let channels = 3i32 + untrusted_has_alpha as i32;
 
+    // data cannot be too long
+    if untrusted_data.len() > MAX_SIZE {
+        return Err("Too much data");
+    }
+
+    let data = untrusted_data;
+
+    // compute the number of channels and check that it matches what
+    // was provided
+    let channels = 3i32 + has_alpha as i32;
     if untrusted_channels != channels {
         return Err("Wrong number of channels");
     }
 
+    // image must be at least 1x1
+    if untrusted_width < 1 || untrusted_height < 1 || untrusted_rowstride < 3 {
+        return Err("Too small width, height, or stride");
+    }
+
+    // check that the image is not too large
     if untrusted_width > MAX_WIDTH || untrusted_height > MAX_HEIGHT {
         return Err("Width or height too large");
     }
 
+    // check that the image fits in the buffer
     if data.len() as i32 / untrusted_height < untrusted_rowstride {
         return Err("Image too large");
     }
 
+    // check that the rows fit in the stride
     if untrusted_rowstride / channels < untrusted_width {
         return Err("Row stride too small");
     }
@@ -180,7 +192,7 @@ impl NotificationEmitter {
         // FIXME: handle markup
         body: TrustedStr,
         actions: Vec<TrustedStr>,
-        // this is santized internally
+        // this is sanitized internally
         category: Option<String>,
         expire_timeout: i32,
         image: Option<ImageParameters>,
