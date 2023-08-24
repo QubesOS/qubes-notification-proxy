@@ -182,6 +182,12 @@ impl NotificationEmitter {
     pub fn body_markup(&self) -> bool {
         false
     }
+    pub async fn closed(&self) -> zbus::Result<NotificationClosedStream<'static>> {
+        self.proxy.receive_notification_closed().await
+    }
+    pub async fn invocations(&self) -> zbus::Result<ActionInvokedStream<'static>> {
+        self.proxy.receive_action_invoked().await
+    }
     pub async fn send_notification(
         &self,
         suppress_sound: bool,
