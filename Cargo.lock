@@ -509,16 +509,22 @@ dependencies = [
 name = "notification-emitter"
 version = "0.1.0"
 dependencies = [
+ "bitflags 1.3.2",
  "serde",
  "serde_derive",
  "zbus",
 ]
 
 [[package]]
+name = "notification-proxy"
+version = "0.1.0"
+
+[[package]]
 name = "notification_proxy"
 version = "0.1.0"
 dependencies = [
  "notification-emitter",
+ "notification-proxy",
  "zbus",
 ]
 

@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zbus::{dbus_proxy, zvariant::Value, Connection};
@@ -15,7 +16,7 @@ pub trait Notifications {
         app_icon: &str,
         summary: &str,
         body: &str,
-        actions: &[&str],
+        actions: &[String],
         hints: &HashMap<&str, Value<'_>>,
         expire_timeout: i32,
     ) -> zbus::Result<u32>;
@@ -28,6 +29,7 @@ pub trait Notifications {
 }
 
 #[repr(u8)]
+#[derive(Serialize, Deserialize)]
 pub enum Urgency {
     Low = 0,
     Normal = 1,
@@ -122,63 +124,99 @@ fn serialize_image(
     )));
 }
 
-#[repr(transparent)]
-pub struct TrustedStr(String);
+pub fn sanitize_str(arg: &str) -> String {
+    // FIXME: validate this.  The current C API is unsuitable as it only returns
+    // a boolean rather than replacing forbidden characters or even indicating
+    // what those forbidden characters are.  This should be fixed on the C side
+    // rather than by ugly hacks (such as character-by-character loops).
+    return arg.to_owned();
+}
 
-impl TrustedStr {
-    pub fn new(arg: String) -> Result<Self, &'static str> {
-        // FIXME: validate this.  The current C API is unsuitable as it only returns
-        // a boolean rather than replacing forbidden characters or even indicating
-        // what those forbidden characters are.  This should be fixed on the C side
-        // rather than by ugly hacks (such as character-by-character loops).
-        return Ok(TrustedStr(arg));
-    }
-
-    pub fn inner(&self) -> &String {
-        &self.0
+bitflags! {
+    #[derive(Default)]
+    pub struct Capabilities: u16 {
+        const ACTION_ICONS = 0b1000000000;
+        const BODY        = 0b00000001;
+        const BODY_HYPERLINKS = 0b0010;
+        const BODY_MARKUP = 0b00000100;
+        const PERSISTENCE = 0b00001000;
+        const SOUND       = 0b00010000;
+        const BODY_IMAGES = 0b00100000;
+        const ICON_MULTI  = 0b01000000;
+        const ICON_STATIC = 0b10000000;
+        const ACTIONS    = 0b100000000;
     }
 }
 
 pub struct NotificationEmitter {
     proxy: NotificationsProxy<'static>,
-    body_markup: bool,
-    persistence: bool,
-    sound: bool,
+    capabilities: Capabilities,
 }
 
 impl NotificationEmitter {
+    pub fn capabilities(&self) -> Capabilities {
+        self.capabilities
+    }
     pub async fn new() -> zbus::Result<Self> {
         let connection = Connection::session().await?;
         let proxy = NotificationsProxy::new(&connection).await?;
-        let capabilities = proxy.get_capabilities().await?.0;
-        let mut body_markup = false;
-        let mut persistence = false;
-        let mut sound = false;
-        for capability in capabilities.into_iter() {
-            match &*capability {
-                "persistence" => persistence = true,
-                "body-markup" => body_markup = true,
-                "sound" => sound = true,
-                _ => eprintln!("Unknown capability {} detected", capability),
+        let capabilities_list = proxy.get_capabilities().await?.0;
+        let mut capabilities = Capabilities::default();
+        for capability_str in capabilities_list.into_iter() {
+            match &*capability_str {
+                "action-icons" => capabilities |= Capabilities::ACTION_ICONS,
+                "persistence" => capabilities |= Capabilities::PERSISTENCE,
+                "body-markup" => capabilities |= Capabilities::BODY_MARKUP,
+                "sound" => capabilities |= Capabilities::SOUND,
+
+                _ => eprintln!("Unknown capability {} detected", capability_str),
             }
         }
         eprintln!(
             "Server capabilities: body markup {}, persistence {}",
-            body_markup, persistence
+            capabilities.contains(Capabilities::BODY_MARKUP),
+            capabilities.contains(Capabilities::PERSISTENCE),
         );
         Ok(Self {
             proxy,
-            body_markup,
-            persistence,
-            sound,
+            capabilities,
         })
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Notification {
+    pub suppress_sound: bool,
+    pub transient: bool,
+    pub urgency: Option<Urgency>,
+    // This is just an ID, and it can't be validated in a non-racy way anyway.
+    // I assume that any decent notification daemon will handle an invalid ID
+    // value correctly, but this code should probably test for this at the start
+    // so that it cannot be used with a server that crashes in this case.
+    pub replaces: u32,
+    pub summary: String,
+    // FIXME: support markup (strictly sanitized and validated) if the server
+    // supports it.
+    pub body: String,
+    pub actions: Vec<String>,
+    pub category: Option<String>,
+    pub expire_timeout: i32,
+    pub image: Option<ImageParameters>,
+}
+
 impl NotificationEmitter {
+    #[inline]
+    /// Whether the server supports persistence
     pub fn persistence(&self) -> bool {
-        self.persistence
+        self.capabilities.contains(Capabilities::PERSISTENCE)
     }
+    #[inline]
+    /// Whether the server supports sound
+    pub fn sound(&self) -> bool {
+        self.capabilities.contains(Capabilities::SOUND)
+    }
+    #[inline]
+    /// Whether the server supports body markup
     pub fn body_markup(&self) -> bool {
         false
     }
@@ -190,23 +228,18 @@ impl NotificationEmitter {
     }
     pub async fn send_notification(
         &self,
-        suppress_sound: bool,
-        transient: bool,
-        urgency: Option<Urgency>,
-        // This is just an ID, and it can't be validated in a non-racy way anyway.
-        // I assume that any decent notification daemon will handle an invalid ID
-        // value correctly, but this code should probably test for this at the start
-        // so that it cannot be used with a server that crashes in this case.
-        replaces: u32,
-        summary: TrustedStr,
-        // FIXME: support markup (strictly sanitized and validated) if the server
-        // supports it.
-        body: TrustedStr,
-        actions: Vec<TrustedStr>,
-        // this is sanitized internally
-        category: Option<String>,
-        expire_timeout: i32,
-        image: Option<ImageParameters>,
+        Notification {
+            suppress_sound,
+            transient,
+            urgency,
+            replaces,
+            summary: untrusted_summary,
+            body: untrusted_body,
+            actions: untrusted_actions,
+            category: untrusted_category,
+            expire_timeout,
+            image,
+        }: Notification,
     ) -> zbus::Result<u32> {
         if expire_timeout < -1 {
             return Err(zbus::Error::Unsupported);
@@ -221,9 +254,13 @@ impl NotificationEmitter {
         // However, there is no good way to do that in practice, so just pass
         // an empty string to indicate "no icon".
         let icon = "";
+        let mut actions = Vec::with_capacity(untrusted_actions.len());
+
+        for i in untrusted_actions {
+            actions.push(sanitize_str(&*i))
+        }
 
         // this is slow but I don't care, the D-Bus call is orders of magnitude slower
-        let actions: Vec<&str> = actions.iter().map(|x| &*x.0).collect();
 
         // Set up the hints
         let mut hints = HashMap::new();
@@ -239,14 +276,14 @@ impl NotificationEmitter {
                 <zbus::zvariant::Value<'_> as From<&'_ u8>>::from(urgency),
             );
         }
-        if suppress_sound && self.sound {
+        if suppress_sound && self.capabilities.contains(Capabilities::SOUND) {
             hints.insert("suppress-sound", Value::from(&true));
         }
-        if transient && self.persistence {
+        if transient && self.persistence() {
             hints.insert("transient", Value::from(&true));
         }
-        if let Some(ref category) = category {
-            let category = category.as_bytes();
+        if let Some(ref untrusted_category) = untrusted_category {
+            let category = untrusted_category.as_bytes();
             match category.get(0) {
                 Some(b'a'..=b'z') => {}
                 _ => return Err(zbus::Error::MissingParameter("Invalid category")),
@@ -261,6 +298,7 @@ impl NotificationEmitter {
             if category[category.len() - 1] == b'.' {
                 return Err(zbus::Error::MissingParameter("Invalid category"));
             }
+            // sanitize end
             hints.insert("category", Value::from(category));
         }
         if let Some(image) = image {
@@ -270,14 +308,15 @@ impl NotificationEmitter {
             };
         }
         let mut escaped_body;
-        if self.body_markup {
+        if self.body_markup() {
+            let body = sanitize_str(&*untrusted_body);
             // Body markup must be escaped.  FIXME: validate it.
-            escaped_body = String::with_capacity(body.0.as_bytes().len());
+            escaped_body = String::with_capacity(body.as_bytes().len());
             // this is slow and can easily be made much faster with
             // trivially correct `unsafe`, but the D-Bus call (which
             // actually renders text on screen!) will be orders of
             // magnitude slower so we do not care.
-            for i in body.0.chars() {
+            for i in body.chars() {
                 match i {
                     '<' => escaped_body.push_str("&lt;"),
                     '>' => escaped_body.push_str("&gt;"),
@@ -288,14 +327,14 @@ impl NotificationEmitter {
                 }
             }
         } else {
-            escaped_body = body.0.clone()
+            escaped_body = sanitize_str(&*untrusted_body)
         }
         self.proxy
             .notify(
                 application_name,
                 replaces,
                 icon,
-                &*summary.0,
+                &*sanitize_str(&*untrusted_summary),
                 &*escaped_body,
                 &*actions,
                 &hints,
