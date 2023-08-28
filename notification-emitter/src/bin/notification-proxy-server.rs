@@ -19,7 +19,11 @@ async fn client_server() {
     let stdout = Rc::new(Mutex::new(tokio::io::stdout()));
 
     loop {
-        let size = stdin.read_u32_le().await.expect("Error reading from stdin").to_le();
+        let size = stdin
+            .read_u32_le()
+            .await
+            .expect("Error reading from stdin")
+            .to_le();
         if size > MAX_MESSAGE_SIZE {
             panic!("Message too large ({} bytes)", size)
         }

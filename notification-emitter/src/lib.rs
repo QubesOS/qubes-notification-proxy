@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use zbus::{dbus_proxy, zvariant::Value, Connection, zvariant::Type};
+use zbus::{dbus_proxy, zvariant::Type, zvariant::Value, Connection};
 #[dbus_proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
@@ -27,7 +27,6 @@ pub trait Notifications {
     #[dbus_proxy(signal)]
     fn action_invoked(&self, id: u32, action_key: String) -> Result<()>;
 }
-
 
 pub const MAX_MESSAGE_SIZE: u32 = 0x1_000_000; // max size in bytes
 

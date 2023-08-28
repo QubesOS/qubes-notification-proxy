@@ -133,7 +133,7 @@ impl Server {
             .serialize(&notification)
             .expect("Cannot serialize object?");
 
-        let len = data.len().try_into().unwrap();
+        let len: u32 = data.len().try_into().unwrap();
         let mut guard = self.0.lock().await;
         guard
             .write_u32_le(len.to_le())
