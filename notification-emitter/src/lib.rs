@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use zbus::{dbus_proxy, zvariant::Value, Connection};
+use zbus::{dbus_proxy, zvariant::Value, Connection, zvariant::Type};
 #[dbus_proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
@@ -28,8 +28,39 @@ pub trait Notifications {
     fn action_invoked(&self, id: u32, action_key: String) -> Result<()>;
 }
 
+
+pub const MAX_MESSAGE_SIZE: u32 = 0x1_000_000; // max size in bytes
+
+#[derive(Serialize, Deserialize, Debug)]
+/// Messages sent by a notification server
+pub enum ReplyMessage {
+    /// Notification successfully sent.
+    Id {
+        /// ID of the created notification.
+        id: u32,
+    },
+    /// D-Bus error
+    DBusError {
+        /// Error name
+        name: String,
+        /// Error message
+        message: Option<String>,
+    },
+    UnknownError,
+    /// Notification was dismissed by the server.
+    Dismissed {
+        /// ID of the dismissed notification.
+        id: u32,
+    },
+    /// An action was invoked.
+    ActionInvoked {
+        /// ID of the notification on which the action was invoked.
+        id: u32,
+    },
+}
+
 #[repr(u8)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Urgency {
     Low = 0,
     Normal = 1,
@@ -40,14 +71,22 @@ pub const MAX_SIZE: usize = 1usize << 21; // This is 2MiB, more than enough
 pub const MAX_WIDTH: i32 = 255;
 pub const MAX_HEIGHT: i32 = 255;
 
-#[derive(Serialize, Deserialize, Debug, Value)]
+#[derive(Serialize, Deserialize, Debug, Value, Type)]
+/// Image parameters
 pub struct ImageParameters {
+    /// The width of the image.  Not trusted.
     pub untrusted_width: i32,
+    /// The height of the image.  Not trusted.
     pub untrusted_height: i32,
+    /// The rowstride of the image.  Not trusted.
     pub untrusted_rowstride: i32,
+    /// Whether the image has an alpha value.
     pub untrusted_has_alpha: bool,
+    /// The bits per sample of the image.  Not trusted.
     pub untrusted_bits_per_sample: i32,
+    /// The number of channels of the image.  Not trusted.
     pub untrusted_channels: i32,
+    /// The image data.  Not trusted.
     pub untrusted_data: Vec<u8>,
 }
 
@@ -184,7 +223,7 @@ impl NotificationEmitter {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Notification {
     pub suppress_sound: bool,
     pub transient: bool,
@@ -193,7 +232,7 @@ pub struct Notification {
     // I assume that any decent notification daemon will handle an invalid ID
     // value correctly, but this code should probably test for this at the start
     // so that it cannot be used with a server that crashes in this case.
-    pub replaces: u32,
+    pub replaces_id: u32,
     pub summary: String,
     // FIXME: support markup (strictly sanitized and validated) if the server
     // supports it.
@@ -232,7 +271,7 @@ impl NotificationEmitter {
             suppress_sound,
             transient,
             urgency,
-            replaces,
+            replaces_id,
             summary: untrusted_summary,
             body: untrusted_body,
             actions: untrusted_actions,
@@ -332,7 +371,7 @@ impl NotificationEmitter {
         self.proxy
             .notify(
                 application_name,
-                replaces,
+                replaces_id,
                 icon,
                 &*sanitize_str(&*untrusted_summary),
                 &*escaped_body,
@@ -343,4 +382,3 @@ impl NotificationEmitter {
             .await
     }
 }
-
