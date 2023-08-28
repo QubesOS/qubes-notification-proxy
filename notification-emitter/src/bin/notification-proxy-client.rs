@@ -2,12 +2,12 @@ use bincode::Options;
 use notification_emitter::{ImageParameters, ReplyMessage, MAX_MESSAGE_SIZE};
 use notification_emitter::{Notification, NotificationEmitter, Urgency};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use zbus::zvariant::{DeserializeDict, SerializeDict, Type, Value};
 
-struct Server;
+struct Server(Arc<Mutex<tokio::io::Stdout>>);
 
 #[derive(SerializeDict, DeserializeDict, Type)]
 #[zvariant(signature = "a{sv}")]
@@ -38,13 +38,17 @@ impl Server {
         // Ignored.  We pass an empty string.
         _app_name: &str,
         replaces_id: u32,
-        app_icon: String,
+        _app_icon: String,
         summary: String,
         body: String,
         actions: Vec<String>,
         hints: HashMap<String, zbus::zvariant::Value<'_>>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
+        let options = bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .with_native_endian()
+            .reject_trailing_bytes();
         let mut image: Option<ImageParameters> = None;
         let mut suppress_sound = false;
         let mut transient = false;
@@ -124,7 +128,21 @@ impl Server {
             expire_timeout,
             image,
         };
-        eprintln!("Constructed notification object {:?}", notification);
+
+        let data = options
+            .serialize(&notification)
+            .expect("Cannot serialize object?");
+
+        let len = data.len().try_into().unwrap();
+        let mut guard = self.0.lock().await;
+        guard
+            .write_u32_le(len.to_le())
+            .await
+            .expect("error writing to stdout");
+        guard
+            .write_all(&*data)
+            .await
+            .expect("error writing to stdout");
         return Ok(0);
     }
 }
@@ -133,12 +151,48 @@ async fn client_server() {
         .expect("cannot create session bus")
         .name("org.freedesktop.Notifications")
         .expect("cannot acquire name")
-        .serve_at("/org/freedesktop/Notifications", Server)
+        .serve_at(
+            "/org/freedesktop/Notifications",
+            Server(Arc::new(Mutex::new(tokio::io::stdout()))),
+        )
         .expect("cannot serve")
         .build()
         .await
         .expect("error");
-    std::future::pending().await
+    let mut stdin = tokio::io::stdin();
+    loop {
+        let size = stdin
+            .read_u32_le()
+            .await
+            .expect("Error reading from stdin")
+            .to_le();
+        if size > MAX_MESSAGE_SIZE {
+            panic!("Message too large ({} bytes)", size)
+        }
+
+        let mut bytes = vec![0; size as _];
+        let bytes_read = stdin
+            .read_exact(&mut bytes[..])
+            .await
+            .expect("error reading from stdin");
+        assert_eq!(bytes_read, size as _);
+        eprintln!("{} bytes read!", bytes_read);
+
+        let options = bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .with_native_endian()
+            .reject_trailing_bytes();
+        match options
+            .deserialize(&bytes)
+            .expect("malformed input from client")
+        {
+            ReplyMessage::Id { id } => todo!(),
+            ReplyMessage::DBusError { name, message } => todo!(),
+            ReplyMessage::Dismissed { id } => todo!(),
+            ReplyMessage::ActionInvoked { id } => todo!(),
+            ReplyMessage::UnknownError => todo!(),
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
