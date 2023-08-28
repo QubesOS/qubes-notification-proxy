@@ -51,10 +51,14 @@ impl Server {
         let mut urgency = None;
         let mut category = None;
         for (i, j) in hints.into_iter() {
-            let mut category = None;
             match &*i {
                 "action-icons" => {}
-                "category" => category = Some(j),
+                "category" => {
+                    category = Some(
+                        j.try_into()
+                            .map_err(|f: zbus::zvariant::Error| zbus::fdo::Error::ZBus(f.into()))?,
+                    )
+                }
                 // There is no way to trust this.  Ignore it.
                 "desktop-entry" => {}
                 // Deprecated, not yet implemented
@@ -103,7 +107,6 @@ impl Server {
                     Value::U8(2) => urgency = Some(Urgency::Critical),
                     _ => eprintln!("Ignoring unknown urgency value {:?}", j),
                 },
-
                 _ => {
                     eprintln!("Unknown hint {:?}, ignoring", &*i);
                 }
