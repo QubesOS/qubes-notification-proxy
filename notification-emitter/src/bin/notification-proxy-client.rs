@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use zbus::zvariant::{DeserializeDict, SerializeDict, Type};
+use zbus::zvariant::{DeserializeDict, SerializeDict, Type, Value};
 
 struct Server;
 
@@ -65,18 +65,27 @@ impl Server {
                 // This is also needed for SNI so it needs to be
                 // implemented.
                 "image-path" => eprintln!("Not yet implemented: Image paths"),
-                #[cfg(all())]
                 "image-data" => {
-                    let e: Result<ImageParameters, zbus::zvariant::Error> =
-                        <ImageParameters as TryFrom<zbus::zvariant::Value>>::try_from(j);
-                    let image_value = match e {
-                        Ok(i) => i,
-                        Err(e) => return Err(zbus::fdo::Error::ZBus(e.into())),
-                    };
-                }
-                #[cfg(all())]
-                "image-data" => {
-                    eprintln!("Not yet implemented: Image data")
+                    let (
+                        untrusted_width,
+                        untrusted_height,
+                        untrusted_rowstride,
+                        untrusted_has_alpha,
+                        untrusted_bits_per_sample,
+                        untrusted_channels,
+                        untrusted_data,
+                    ) = j
+                        .try_into()
+                        .map_err(|f: zbus::zvariant::Error| zbus::fdo::Error::ZBus(f.into()))?;
+                    image = Some(ImageParameters {
+                        untrusted_width,
+                        untrusted_height,
+                        untrusted_rowstride,
+                        untrusted_has_alpha,
+                        untrusted_bits_per_sample,
+                        untrusted_channels,
+                        untrusted_data,
+                    })
                 }
                 "sound-file" => {
                     eprintln!("Not yet implemented: Sound files (got {:?})", j)
@@ -110,7 +119,7 @@ impl Server {
             actions,
             category,
             expire_timeout,
-            image: None,
+            image,
         };
         eprintln!("Constructed notification object {:?}", notification);
         return Ok(0);
