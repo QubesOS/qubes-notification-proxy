@@ -98,9 +98,9 @@ impl Server {
                 "transient" => transient = true,
                 "x" | "y" => eprintln!("Ignoring coordinate hint {} {:?}", i, j),
                 "urgency" => match j {
-                    zbus::zvariant::Value::U8(0) => urgency = Some(Urgency::Low),
-                    zbus::zvariant::Value::U8(1) => urgency = Some(Urgency::Normal),
-                    zbus::zvariant::Value::U8(2) => urgency = Some(Urgency::Critical),
+                    Value::U8(0) => urgency = Some(Urgency::Low),
+                    Value::U8(1) => urgency = Some(Urgency::Normal),
+                    Value::U8(2) => urgency = Some(Urgency::Critical),
                     _ => eprintln!("Ignoring unknown urgency value {:?}", j),
                 },
 
