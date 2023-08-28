@@ -19,7 +19,7 @@ async fn client_server() {
     let stdout = Rc::new(Mutex::new(tokio::io::stdout()));
 
     loop {
-        let size = stdin.read_u32_le().await.expect("Error reading from stdin");
+        let size = stdin.read_u32_le().await.expect("Error reading from stdin").to_le();
         if size > MAX_MESSAGE_SIZE {
             panic!("Message too large ({} bytes)", size)
         }
@@ -48,10 +48,10 @@ async fn client_server() {
                     Err(_) => ReplyMessage::UnknownError,
                 })
                 .expect("Serialization failed?");
-            let len = u32::to_le(data.len().try_into().unwrap());
+            let len: u32 = data.len().try_into().unwrap();
             let mut guard = stdout.lock().await;
             guard
-                .write_u32_le(len)
+                .write_u32_le(len.to_le())
                 .await
                 .expect("error writing to stdout");
             guard
