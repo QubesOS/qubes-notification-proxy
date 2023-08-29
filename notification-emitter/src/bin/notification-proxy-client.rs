@@ -32,6 +32,23 @@ struct Hints {
 
 #[zbus::dbus_interface(name = "org.freedesktop.Notifications")]
 impl Server {
+    async fn get_capabilities(&self) -> zbus::fdo::Result<(Vec<String>,)> {
+        Ok((vec!["persistence".to_owned(), "actions".to_owned()],))
+    }
+    #[dbus_interface(signal)]
+    async fn notification_closed(
+        &self,
+        signal_context: &zbus::SignalContext<'_>,
+        id: u32,
+        reason: u32,
+    ) -> zbus::Result<()>;
+    #[dbus_interface(signal)]
+    async fn action_invoked(
+        &self,
+        signal_context: &zbus::SignalContext<'_>,
+        id: u32,
+        action_key: String,
+    ) -> zbus::Result<()>;
     async fn get_server_information(&self) -> zbus::fdo::Result<(String, String, String, String)> {
         Ok((
             "Qubes OS Notification Proxy".to_owned(),
@@ -168,7 +185,7 @@ async fn client_server() {
         out: tokio::io::stdout(),
         map: HashMap::new(),
     }));
-    let _connection = zbus::ConnectionBuilder::session()
+    let connection = zbus::ConnectionBuilder::session()
         .expect("cannot create session bus")
         .name("org.freedesktop.Notifications")
         .expect("cannot acquire name")
@@ -180,6 +197,11 @@ async fn client_server() {
         .build()
         .await
         .expect("error");
+    let interface_ref = connection
+        .object_server()
+        .interface::<_, Server>("/org/freedesktop/Notifications")
+        .await
+        .expect("something went wrong");
     let mut stdin = tokio::io::stdin();
     loop {
         let size = stdin
@@ -220,10 +242,18 @@ async fn client_server() {
                 message: _,
                 sequence: _,
             } => todo!(),
-            ReplyMessage::Dismissed { id: _, reason: _ } => {
-
+            ReplyMessage::Dismissed { id, reason } => {
+                let x = interface_ref.get().await;
+                x.notification_closed(interface_ref.signal_context(), id, reason)
+                    .await
+                    .expect("cannot emit signal");
             }
-            ReplyMessage::ActionInvoked { id: _ } => todo!(),
+            ReplyMessage::ActionInvoked { id, action } => {
+                let x = interface_ref.get().await;
+                x.action_invoked(interface_ref.signal_context(), id, action)
+                    .await
+                    .expect("cannot emit signal");
+            }
             ReplyMessage::UnknownError { sequence: _ } => todo!(),
         }
     }

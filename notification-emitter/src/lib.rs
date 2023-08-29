@@ -67,6 +67,8 @@ pub enum ReplyMessage {
     ActionInvoked {
         /// ID of the notification on which the action was invoked.
         id: u32,
+        /// Action that was invoked
+        action: String,
     },
 }
 

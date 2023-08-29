@@ -21,8 +21,8 @@ async fn client_server() {
         .closed()
         .await
         .expect("Cannot register for closed signals");
-    let _invoked_stream = emitter
-        .closed()
+    let mut _invoked_stream = emitter
+        .invocations()
         .await
         .expect("Cannot register for invoked signals");
     let stdout_ = stdout.clone();
@@ -39,6 +39,25 @@ async fn client_server() {
                 .serialize(&ReplyMessage::Dismissed {
                     id: item.id,
                     reason: item.reason,
+                })
+                .expect("Serialization failed?");
+            stdout_.transmit(&*data).await
+        }
+    });
+    let stdout_ = stdout.clone();
+    let _handle = tokio::task::spawn_local(async move {
+        while let Some(item) = _invoked_stream.next().await {
+            let item = match item.args() {
+                Ok(item) => item,
+                Err(e) => {
+                    eprintln!("Got invalid message from notification daemon: {}", e);
+                    continue;
+                }
+            };
+            let data = options
+                .serialize(&ReplyMessage::ActionInvoked {
+                    id: item.id,
+                    action: item.action_key,
                 })
                 .expect("Serialization failed?");
             stdout_.transmit(&*data).await
