@@ -1,9 +1,9 @@
 use bincode::Options;
+use futures_util::StreamExt;
+use notification_emitter::{MessageWriter, ReplyMessage, MAX_MESSAGE_SIZE};
 use notification_emitter::{Notification, NotificationEmitter};
-use notification_emitter::{ReplyMessage, MAX_MESSAGE_SIZE};
 use std::rc::Rc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Mutex;
+use tokio::io::AsyncReadExt;
 
 async fn client_server() {
     let emitter = Rc::new(
@@ -16,8 +16,35 @@ async fn client_server() {
         .with_native_endian()
         .reject_trailing_bytes();
     let mut stdin = tokio::io::stdin();
-    let stdout = Rc::new(Mutex::new(tokio::io::stdout()));
-
+    let stdout = MessageWriter::new();
+    let mut closed_stream = emitter
+        .closed()
+        .await
+        .expect("Cannot register for closed signals");
+    let _invoked_stream = emitter
+        .closed()
+        .await
+        .expect("Cannot register for invoked signals");
+    let stdout_ = stdout.clone();
+    let _handle = tokio::task::spawn_local(async move {
+        while let Some(item) = closed_stream.next().await {
+            let item = match item.args() {
+                Ok(item) => item,
+                Err(e) => {
+                    eprintln!("Got invalid message from notification daemon: {}", e);
+                    continue;
+                }
+            };
+            let data = options
+                .serialize(&ReplyMessage::Dismissed {
+                    id: item.id,
+                    reason: item.reason,
+                })
+                .expect("Serialization failed?");
+            stdout_.transmit(&*data).await
+        }
+    });
+    eprintln!("Entering loop");
     loop {
         let size = stdin
             .read_u32_le()
@@ -27,41 +54,33 @@ async fn client_server() {
         if size > MAX_MESSAGE_SIZE {
             panic!("Message too large ({} bytes)", size)
         }
-
+        eprintln!("{} bytes to read!", size);
         let mut bytes = vec![0; size as _];
         let bytes_read = stdin
             .read_exact(&mut bytes[..])
             .await
             .expect("error reading from stdin");
         assert_eq!(bytes_read, size as _);
-        eprintln!("{} bytes read!", bytes_read);
         let message: Notification = options
             .deserialize(&bytes)
             .expect("malformed input from client");
+        let sequence = message.id;
         let emitter = emitter.clone();
         let stdout = stdout.clone();
         tokio::task::spawn_local(async move {
             let out = emitter.send_notification(message).await;
             let data = options
                 .serialize(&match out {
-                    Ok(id) => ReplyMessage::Id { id },
+                    Ok(id) => ReplyMessage::Id { id, sequence },
                     Err(zbus::Error::MethodError(name, message, _)) => ReplyMessage::DBusError {
                         name: name.to_string(),
                         message,
+                        sequence,
                     },
-                    Err(_) => ReplyMessage::UnknownError,
+                    Err(_) => ReplyMessage::UnknownError { sequence },
                 })
                 .expect("Serialization failed?");
-            let len: u32 = data.len().try_into().unwrap();
-            let mut guard = stdout.lock().await;
-            guard
-                .write_u32_le(len.to_le())
-                .await
-                .expect("error writing to stdout");
-            guard
-                .write_all(&*data)
-                .await
-                .expect("error writing to stdout");
+            stdout.transmit(&*data).await
         });
     }
 }

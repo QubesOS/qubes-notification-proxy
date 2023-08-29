@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 notification-emitter = { version = "0.1.0", path = "notification-emitter" }
 notification-proxy = { version = "0.1.0", path = "notification-proxy" }
-zbus = "3.14.1"
+zbus = { version = "3.14.1", features = ["tokio"], default-features = false }
 
 [workspace]
 members = ["notification-emitter", "notification-proxy"]

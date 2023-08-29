@@ -1,13 +1,20 @@
 use bincode::Options;
+use futures_channel::oneshot::Sender;
 use notification_emitter::{ImageParameters, ReplyMessage, MAX_MESSAGE_SIZE};
-use notification_emitter::{Notification, NotificationEmitter, Urgency};
+use notification_emitter::{Notification, Urgency};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use zbus::zvariant::{DeserializeDict, SerializeDict, Type, Value};
 
-struct Server(Arc<Mutex<tokio::io::Stdout>>);
+#[derive(Debug)]
+struct ServerInner {
+    out: tokio::io::Stdout,
+    map: HashMap<u64, Sender<u32>>,
+}
+
+struct Server(Arc<Mutex<ServerInner>>, core::sync::atomic::AtomicU64);
 
 #[derive(SerializeDict, DeserializeDict, Type)]
 #[zvariant(signature = "a{sv}")]
@@ -116,7 +123,9 @@ impl Server {
                 }
             }
         }
+        let id = self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let notification = Notification {
+            id,
             suppress_sound,
             transient,
             urgency,
@@ -136,24 +145,36 @@ impl Server {
         let len: u32 = data.len().try_into().unwrap();
         let mut guard = self.0.lock().await;
         guard
+            .out
             .write_u32_le(len.to_le())
             .await
             .expect("error writing to stdout");
         guard
+            .out
             .write_all(&*data)
             .await
             .expect("error writing to stdout");
-        return Ok(0);
+        guard.out.flush().await.expect("Error writing to stdout");
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        guard.map.insert(id, sender);
+        drop(guard);
+        eprintln!("Message sent to server");
+
+        return Ok(receiver.await.expect("sender crashed"));
     }
 }
 async fn client_server() {
+    let server = Arc::new(Mutex::new(ServerInner {
+        out: tokio::io::stdout(),
+        map: HashMap::new(),
+    }));
     let _connection = zbus::ConnectionBuilder::session()
         .expect("cannot create session bus")
         .name("org.freedesktop.Notifications")
         .expect("cannot acquire name")
         .serve_at(
             "/org/freedesktop/Notifications",
-            Server(Arc::new(Mutex::new(tokio::io::stdout()))),
+            Server(server.clone(), 0u64.into()),
         )
         .expect("cannot serve")
         .build()
@@ -186,11 +207,24 @@ async fn client_server() {
             .deserialize(&bytes)
             .expect("malformed input from client")
         {
-            ReplyMessage::Id { id } => todo!(),
-            ReplyMessage::DBusError { name, message } => todo!(),
-            ReplyMessage::Dismissed { id } => todo!(),
-            ReplyMessage::ActionInvoked { id } => todo!(),
-            ReplyMessage::UnknownError => todo!(),
+            ReplyMessage::Id { id, sequence } => server
+                .lock()
+                .await
+                .map
+                .remove(&sequence)
+                .expect("server violated the protocol")
+                .send(id)
+                .expect("task died"),
+            ReplyMessage::DBusError {
+                name: _,
+                message: _,
+                sequence: _,
+            } => todo!(),
+            ReplyMessage::Dismissed { id: _, reason: _ } => {
+
+            }
+            ReplyMessage::ActionInvoked { id: _ } => todo!(),
+            ReplyMessage::UnknownError { sequence: _ } => todo!(),
         }
     }
 }

@@ -1,6 +1,9 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::rc::Rc;
+use tokio::io::AsyncWriteExt as _;
+use tokio::sync::Mutex;
 use zbus::{dbus_proxy, zvariant::Type, zvariant::Value, Connection};
 #[dbus_proxy(
     interface = "org.freedesktop.Notifications",
@@ -37,6 +40,8 @@ pub enum ReplyMessage {
     Id {
         /// ID of the created notification.
         id: u32,
+        /// The sequence number of this method call
+        sequence: u64,
     },
     /// D-Bus error
     DBusError {
@@ -44,12 +49,19 @@ pub enum ReplyMessage {
         name: String,
         /// Error message
         message: Option<String>,
+        /// The sequence number of this method call
+        sequence: u64,
     },
-    UnknownError,
+    UnknownError {
+        /// The sequence number of this method call
+        sequence: u64,
+    },
     /// Notification was dismissed by the server.
     Dismissed {
         /// ID of the dismissed notification.
         id: u32,
+        /// Reason the notification was dismissed.
+        reason: u32,
     },
     /// An action was invoked.
     ActionInvoked {
@@ -222,8 +234,31 @@ impl NotificationEmitter {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MessageWriter(Rc<Mutex<tokio::io::Stdout>>);
+
+impl MessageWriter {
+    pub fn new() -> Self {
+        Self(Rc::new(Mutex::new(tokio::io::stdout())))
+    }
+    pub async fn transmit(&self, data: &[u8]) {
+        let len: u32 = data.len().try_into().unwrap();
+        let mut guard = self.0.lock().await;
+        guard
+            .write_u32_le(len.to_le())
+            .await
+            .expect("error writing to stdout");
+        guard
+            .write_all(&*data)
+            .await
+            .expect("error writing to stdout");
+        guard.flush().await.expect("error writing to stdout");
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Notification {
+    pub id: u64,
     pub suppress_sound: bool,
     pub transient: bool,
     pub urgency: Option<Urgency>,
@@ -267,6 +302,7 @@ impl NotificationEmitter {
     pub async fn send_notification(
         &self,
         Notification {
+            id: _,
             suppress_sound,
             transient,
             urgency,
