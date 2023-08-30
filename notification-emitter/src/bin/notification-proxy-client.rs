@@ -11,7 +11,7 @@ use zbus::zvariant::{DeserializeDict, SerializeDict, Type, Value};
 #[derive(Debug)]
 struct ServerInner {
     out: tokio::io::Stdout,
-    map: HashMap<u64, Sender<u32>>,
+    map: HashMap<u64, Sender<Result<u32, (String, Option<String>)>>>,
 }
 
 struct Server(Arc<Mutex<ServerInner>>, core::sync::atomic::AtomicU64);
@@ -177,7 +177,10 @@ impl Server {
         drop(guard);
         eprintln!("Message sent to server");
 
-        return Ok(receiver.await.expect("sender crashed"));
+        receiver
+            .await
+            .expect("sender crashed")
+            .map_err(|(_a, b)| zbus::fdo::Error::Failed(b.unwrap_or("failed".to_owned())))
     }
 }
 async fn client_server() {
@@ -235,13 +238,20 @@ async fn client_server() {
                 .map
                 .remove(&sequence)
                 .expect("server violated the protocol")
-                .send(id)
+                .send(Ok(id))
                 .expect("task died"),
             ReplyMessage::DBusError {
-                name: _,
-                message: _,
-                sequence: _,
-            } => todo!(),
+                name,
+                message,
+                sequence,
+            } => server
+                .lock()
+                .await
+                .map
+                .remove(&sequence)
+                .expect("server violated the protocol")
+                .send(Err((name, message)))
+                .expect("task died"),
             ReplyMessage::Dismissed { id, reason } => {
                 let x = interface_ref.get().await;
                 x.notification_closed(interface_ref.signal_context(), id, reason)
