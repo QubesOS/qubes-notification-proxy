@@ -5,12 +5,12 @@
 
 Name:           rust-notification-emitter
 Version:        @VERSION@
-Release:        %autorelease
+Release:        1%{dist}
 Summary:        Notification proxy for Qubes OS
 
 License:        GPLv3+
-URL:            https://crates.io/crates/notification-emitter
-Source:         %{crates_source}
+URL:            https://www.qubes-os.org/
+Source:         notification-emitter.tar.gz
 
 BuildRequires:  rust-packaging >= 23
 
@@ -61,7 +61,7 @@ use the "default" feature of the "%{crate}" crate.
 %ghost %{crate_instdir}/Cargo.toml
 
 %prep
-%autosetup -n %{crate}-%{version_no_tilde} -p1
+%autosetup -n %{crate} -p1
 %cargo_prep
 
 %generate_buildrequires
