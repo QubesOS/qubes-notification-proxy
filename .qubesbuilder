@@ -2,7 +2,7 @@ host:
   rpm:
     build:
     - rust-notification-emitter.spec 
-host:
+vm:
   rpm:
     build:
     - rust-notification-emitter.spec 
