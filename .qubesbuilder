@@ -6,3 +6,6 @@ host:
   rpm:
     build:
     - rust-notification-emitter.spec 
+  debian:
+    build:
+    - debian
