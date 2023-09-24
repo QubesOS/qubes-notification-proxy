@@ -1,0 +1,8 @@
+host:
+  rpm:
+    build:
+    - rust-notification-emitter.spec 
+host:
+  rpm:
+    build:
+    - rust-notification-emitter.spec 
