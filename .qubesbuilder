@@ -1,11 +1,11 @@
 host:
   rpm:
     build:
-    - rust-notification-emitter.spec 
+    - rust-notification-emitter.spec
 vm:
   rpm:
     build:
-    - rust-notification-emitter.spec 
+    - rust-notification-emitter.spec
   debian:
     build:
     - debian
