@@ -198,17 +198,17 @@ pub fn sanitize_str(arg: &str) -> String {
 bitflags! {
     #[derive(Default)]
     pub struct Capabilities: u16 {
-        const ACTION_ICONS = 0b1000000000;
-        const BODY        = 0b00000001;
-        const BODY_HYPERLINKS = 0b0010;
-        const BODY_MARKUP = 0b00000100;
-        const PERSISTENCE = 0b00001000;
-        const SOUND       = 0b00010000;
-        const BODY_IMAGES = 0b00100000;
-        const ICON_MULTI  = 0b01000000;
-        const ICON_STATIC = 0b10000000;
-        const ACTIONS    = 0b100000000;
-    }
+        const BODY            = 0b0000000001;
+        const BODY_HYPERLINKS = 0b0000000010;
+        const BODY_MARKUP     = 0b0000000100;
+        const PERSISTENCE     = 0b0000001000;
+        const SOUND           = 0b0000010000;
+        const BODY_IMAGES     = 0b0000100000;
+        const ICON_MULTI      = 0b0001000000;
+        const ICON_STATIC     = 0b0010000000;
+        const ACTIONS         = 0b0100000000;
+        const ACTION_ICONS    = 0b1000000000;
+   }
 }
 
 pub struct NotificationEmitter {
@@ -302,9 +302,19 @@ impl NotificationEmitter {
         self.capabilities.contains(Capabilities::SOUND)
     }
     #[inline]
+    /// Whether the server supports actions
+    pub fn actions(&self) -> bool {
+        self.capabilities.contains(Capabilities::ACTIONS)
+    }
+    #[inline]
     /// Whether the server supports body markup
     pub fn body_markup(&self) -> bool {
-        false
+        self.capabilities.contains(Capabilities::BODY_MARKUP)
+    }
+    #[inline]
+    /// Whether the server supports notification bodies
+    pub fn body(&self) -> bool {
+        self.capabilities.contains(Capabilities::BODY)
     }
     pub async fn closed(&self) -> zbus::Result<NotificationClosedStream<'static>> {
         self.proxy.receive_notification_closed().await
@@ -341,11 +351,15 @@ impl NotificationEmitter {
         // However, there is no good way to do that in practice, so just pass
         // an empty string to indicate "no icon".
         let icon = "";
-        let mut actions = Vec::with_capacity(untrusted_actions.len());
-
-        for i in untrusted_actions {
-            actions.push(sanitize_str(&*i))
-        }
+        let actions = if self.actions() {
+            let mut actions = Vec::with_capacity(untrusted_actions.len());
+            for i in untrusted_actions {
+                actions.push(sanitize_str(&*i))
+            }
+            actions
+        } else {
+            vec![]
+        };
 
         // this is slow but I don't care, the D-Bus call is orders of magnitude slower
 
