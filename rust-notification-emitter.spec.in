@@ -3,12 +3,12 @@
 
 %global crate notification-emitter
 
-Name:           rust-notification-emitter
+Name:           qubes-notification
 Version:        @VERSION@
 Release:        %autorelease
 Summary:        Notification proxy for Qubes OS
 
-License:        GPLv3+
+License:        GPLv2+
 URL:            https://www.qubes-os.org/
 Source:         notification-emitter.tar.gz
 
@@ -32,8 +32,7 @@ BuildRequires:  qubes-utils-devel
 # FIXME: no license files detected
 %license LICENSE.dependencies
 %doc TASKS.md
-%{_bindir}/notification-proxy-client
-%{_bindir}/notification-proxy-server
+%{_bindir}/qubes-notification-proxy-server
 /etc/qubes-rpc/qubes.Notifications
 
 %package        devel
@@ -45,22 +44,34 @@ BuildArch:      noarch
 This package contains library source intended for building other packages which
 use the "%{crate}" crate.
 
-%files          devel
-# FIXME: no license files detected
-%doc %{crate_instdir}/TASKS.md
-%{crate_instdir}/
+%package        agent
+Summary:        Guest-side part of the notification proxy
+%description    agent
+Qubes OS includes a proxy for the FreeDesktop.org notification
+protocol.  This package provides the guest part of the proxy,
+which forwards notifications from guest processes to the host.
 
-%package     -n %{name}+default-devel
-Summary:        %{summary}
-BuildArch:      noarch
+%files agent
+%{_bindir}/qubes-notification-proxy-client
 
-%description -n %{name}+default-devel %{_description}
+%package        daemon
+Summary:        Host-side part of the notification proxy
+Requires:       %{name}-license
 
-This package contains library source intended for building other packages which
-use the "default" feature of the "%{crate}" crate.
+%description daemon
+Qubes OS includes a proxy for the FreeDesktop.org notification
+protocol.  This package provides the host part of the proxy, which
+forwards notifications to the host's notification daemon.
 
-%files       -n %{name}+default-devel
-%ghost %{crate_instdir}/Cargo.toml
+%package        license
+Summary:        License files for the notification proxy
+
+%description license
+License files for the notification proxy
+
+%files license
+# FIXME
+/usr/share/licenses/qubes-notification-proxy/LICENSE.dependencies
 
 %prep
 %autosetup -n %{crate} -p1
@@ -75,9 +86,11 @@ use the "default" feature of the "%{crate}" crate.
 %{cargo_license} > LICENSE.dependencies
 
 %install
-%cargo_install
+install -D -- target/release/notification-proxy-client "$RPM_BUILD_ROOT"/usr/bin/qubes-notification-proxy-client
+install -D -- target/release/notification-proxy-server "$RPM_BUILD_ROOT"/usr/bin/qubes-notification-proxy-server
 install -d -- "$RPM_BUILD_ROOT/etc/qubes-rpc/"
-ln -s -- ../../usr/bin/notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/qubes.Notifications"
+ln -s -- ../../usr/bin/qubes-notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/qubes.Notifications"
+install -D -- LICENSE.dependencies "$RPM_BUILD_ROOT/usr/share/licenses/qubes-notification-proxy/LICENSE.dependencies"
 
 %if %{with check}
 %check
@@ -85,4 +98,4 @@ ln -s -- ../../usr/bin/notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/
 %endif
 
 %changelog
-%autochangelog
+@CHANGELOG@

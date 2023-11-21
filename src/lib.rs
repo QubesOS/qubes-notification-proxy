@@ -214,13 +214,14 @@ bitflags! {
 pub struct NotificationEmitter {
     proxy: NotificationsProxy<'static>,
     capabilities: Capabilities,
+    prefix: String,
 }
 
 impl NotificationEmitter {
     pub fn capabilities(&self) -> Capabilities {
         self.capabilities
     }
-    pub async fn new() -> zbus::Result<Self> {
+    pub async fn new(prefix: String) -> zbus::Result<Self> {
         let connection = Connection::session().await?;
         let proxy = NotificationsProxy::new(&connection).await?;
         let capabilities_list = proxy.get_capabilities().await?.0;
@@ -243,6 +244,7 @@ impl NotificationEmitter {
         Ok(Self {
             proxy,
             capabilities,
+            prefix,
         })
     }
 }
@@ -411,7 +413,7 @@ impl NotificationEmitter {
         let mut escaped_body;
         if self.body_markup() {
             let body = sanitize_str(&*untrusted_body);
-            // Body markup must be escaped.  FIXME: validate it.
+            // Body markup must be escaped.  FIXME: validate it instead.
             escaped_body = String::with_capacity(body.as_bytes().len());
             // this is slow and can easily be made much faster with
             // trivially correct `unsafe`, but the D-Bus call (which
@@ -435,7 +437,7 @@ impl NotificationEmitter {
                 application_name,
                 replaces_id,
                 icon,
-                &*sanitize_str(&*untrusted_summary),
+                &*(self.prefix.clone() + &*sanitize_str(&*untrusted_summary)),
                 &*escaped_body,
                 &*actions,
                 &hints,

@@ -5,9 +5,9 @@ use notification_emitter::{Notification, NotificationEmitter};
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
 
-async fn client_server() {
+async fn client_server(prefix: String) {
     let emitter = Rc::new(
-        NotificationEmitter::new()
+        NotificationEmitter::new(prefix)
             .await
             .expect("Cannot connect to notifcation daemon"),
     );
@@ -108,6 +108,7 @@ async fn client_server() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let local_set = tokio::task::LocalSet::new();
 
-    local_set.spawn_local(client_server());
+    let source = std::env::var("QREXEC_REMOTE_DOMAIN").expect("No remote domain in qrexec");
+    local_set.spawn_local(client_server(source + ": "));
     Ok(local_set.await)
 }

@@ -8,5 +8,5 @@
 5. [x] Wire that up to guest notifications.
 6. [x] Implement dismissal of notifications.
 7. [x] Handle actions being invoked.
-8. [ ] Handle errors.
-9. [ ] Sanitize strings.
+8. [x] Handle errors.
+9. [x] Sanitize strings.
