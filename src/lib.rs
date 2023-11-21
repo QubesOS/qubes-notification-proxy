@@ -182,17 +182,14 @@ extern "C" {
 }
 
 pub fn sanitize_str(arg: &str) -> String {
-    // FIXME: validate this.  The current C API is unsuitable as it only returns
-    // a boolean rather than replacing forbidden characters or even indicating
-    // what those forbidden characters are.  This should be fixed on the C side
-    // rather than by ugly hacks (such as character-by-character loops).
     arg.chars()
         .map(|c| {
             // SAFETY: this function is not actually unsafe
             if unsafe { qubes_pure_code_point_safe_for_display(c.into()) } {
                 c
             } else {
-                '_'
+                // This is U+FFFD REPLACEMENT CHARACTER
+                '\u{FFFD}'
             }
         })
         .collect()
