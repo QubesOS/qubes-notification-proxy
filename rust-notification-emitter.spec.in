@@ -34,6 +34,7 @@ BuildRequires:  qubes-utils-devel
 %doc TASKS.md
 %{_bindir}/notification-proxy-client
 %{_bindir}/notification-proxy-server
+/etc/qubes-rpc/qubes.Notifications
 
 %package        devel
 Summary:        %{summary}
@@ -75,6 +76,8 @@ use the "default" feature of the "%{crate}" crate.
 
 %install
 %cargo_install
+install -d -- "$RPM_BUILD_ROOT/etc/qubes-rpc/"
+ln -s -- ../../usr/bin/notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/qubes.Notifications"
 
 %if %{with check}
 %check
