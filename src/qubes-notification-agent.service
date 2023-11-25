@@ -4,7 +4,7 @@
 ConditionGroup=qubes
 
 [Service]
-ExecStart=/usr/bin/qrexec-client-vm '' qubes.Notifications /usr/bin/notification-proxy-client
+ExecStart=/usr/bin/qrexec-client-vm '' qubes.Notifications /usr/bin/qubes-notification-proxy-client
 BusName=org.freedesktop.Notifications
 
 [Install]
