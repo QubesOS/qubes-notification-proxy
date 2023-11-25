@@ -13,6 +13,8 @@ URL:            https://www.qubes-os.org/
 Source:         notification-emitter.tar.gz
 
 BuildRequires:  rust-packaging >= 23
+# FIXME: specify version
+BuildRequires:  systemd-rpm-macros
 
 %global _description %{expand:
 Notification proxy for Qubes OS.}
@@ -27,13 +29,6 @@ License:        GPLv2+
 BuildRequires:  qubes-utils-devel
 
 %description -n %{crate} %{_description}
-
-%files       -n %{crate}
-# FIXME: no license files detected
-%license LICENSE.dependencies
-%doc TASKS.md
-%{_bindir}/qubes-notification-proxy-server
-/etc/qubes-rpc/qubes.Notifications
 
 %package        devel
 Summary:        %{summary}
@@ -69,6 +64,10 @@ Qubes OS includes a proxy for the FreeDesktop.org notification
 protocol.  This package provides the host part of the proxy, which
 forwards notifications to the host's notification daemon.
 
+%files daemon
+%{_bindir}/qubes-notification-proxy-server
+/etc/qubes-rpc/qubes.Notifications
+
 %package        license
 Summary:        License files for the notification proxy
 
@@ -77,7 +76,7 @@ License files for the notification proxy
 
 %files license
 # FIXME
-/usr/share/licenses/qubes-notification-proxy/LICENSE.dependencies
+%license /usr/share/licenses/qubes-notification-proxy/LICENSE.dependencies
 
 %prep
 %autosetup -n %{crate} -p1
