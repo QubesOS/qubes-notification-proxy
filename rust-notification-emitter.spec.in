@@ -47,13 +47,15 @@ protocol.  This package provides the guest part of the proxy,
 which forwards notifications from guest processes to the host.
 
 %post agent
-%systemd_user_post qubes-notification.service
+%systemd_user_post qubes-notification-agent.service
 
 %preun agent
-%systemd_user_preun qubes-notification.service
+%systemd_user_preun qubes-notification-agent.service
 
 %files agent
 %{_bindir}/qubes-notification-proxy-client
+%_userunitdir/qubes-notification-agent.service
+%_userpresetdir/90-qubes-notification-agent.preset
 
 %package        daemon
 Summary:        Host-side part of the notification proxy
@@ -91,9 +93,11 @@ License files for the notification proxy
 %{cargo_license} > LICENSE.dependencies
 
 %install
-install -D -- target/release/notification-proxy-client "$RPM_BUILD_ROOT"/usr/bin/qubes-notification-proxy-client
-install -D -- target/release/notification-proxy-server "$RPM_BUILD_ROOT"/usr/bin/qubes-notification-proxy-server
-install -d -- "$RPM_BUILD_ROOT/etc/qubes-rpc/"
+install -d -- "$RPM_BUILD_ROOT/etc/qubes-rpc/" "$RPM_BUILD_ROOT/%_userunitdir" "$RPM_BUILD_ROOT/%_userpresetdir"
+install -- src/qubes-notification-agent.service "$RPM_BUILD_ROOT/%_userunitdir"
+install -- src/90-qubes-notification-agent.preset "$RPM_BUILD_ROOT/%_userpresetdir"
+install -D -- target/release/notification-proxy-client "$RPM_BUILD_ROOT/%_bindir/qubes-notification-proxy-client"
+install -D -- target/release/notification-proxy-server "$RPM_BUILD_ROOT/%_bindir/qubes-notification-proxy-server"
 ln -s -- ../../usr/bin/qubes-notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/qubes.Notifications"
 install -D -- LICENSE.dependencies "$RPM_BUILD_ROOT/usr/share/licenses/qubes-notification-proxy/LICENSE.dependencies"
 
