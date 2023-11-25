@@ -51,6 +51,12 @@ Qubes OS includes a proxy for the FreeDesktop.org notification
 protocol.  This package provides the guest part of the proxy,
 which forwards notifications from guest processes to the host.
 
+%post agent
+%systemd_user_post qubes-notification.service
+
+%preun agent
+%systemd_user_preun qubes-notification.service
+
 %files agent
 %{_bindir}/qubes-notification-proxy-client
 

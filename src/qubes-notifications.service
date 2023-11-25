@@ -1,0 +1,11 @@
+[Unit]
+# Do not start this service for users not in the Qubes group,
+# as it won't work.
+ConditionGroup=qubes
+
+[Service]
+ExecStart=/usr/bin/qrexec-client-vm '' qubes.Notifications /usr/bin/notification-proxy-client
+BusName=org.freedesktop.Notifications
+
+[Install]
+WantedBy=default.target
