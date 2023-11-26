@@ -41,6 +41,7 @@ use the "%{crate}" crate.
 
 %package        agent
 Summary:        Guest-side part of the notification proxy
+Provides:       desktop-notification-daemon
 %description    agent
 Qubes OS includes a proxy for the FreeDesktop.org notification
 protocol.  This package provides the guest part of the proxy,
