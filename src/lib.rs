@@ -233,7 +233,12 @@ impl NotificationEmitter {
                 "persistence" => capabilities |= Capabilities::PERSISTENCE,
                 "body-markup" => capabilities |= Capabilities::BODY_MARKUP,
                 "sound" => capabilities |= Capabilities::SOUND,
-
+                "body" => capabilities |= Capabilities::BODY,
+                "body-hyperlinks" => capabilities |= Capabilities::BODY_HYPERLINKS,
+                "body-images" => capabilities |= Capabilities::BODY_IMAGES,
+                "icon-static" => capabilities |= Capabilities::ICON_STATIC,
+                "actions" => capabilities |= Capabilities::ACTIONS,
+                "icon-multi" => capabilities |= Capabilities::ICON_MULTI,
                 _ => eprintln!("Unknown capability {} detected", capability_str),
             }
         }
