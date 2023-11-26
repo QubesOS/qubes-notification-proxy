@@ -359,6 +359,13 @@ impl NotificationEmitter {
             return Err(zbus::Error::Unsupported);
         }
 
+        if untrusted_actions.len() & 1 != 0 {
+            return Err(zbus::Error::Failure(format!(
+                "Actions must have an even length, got {}",
+                untrusted_actions.len()
+            )));
+        }
+
         // In the future this should be a validated application name prefixed
         // by the qube name.
         let application_name = self.application_name.clone();
