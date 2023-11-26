@@ -5,11 +5,14 @@ use notification_emitter::{Notification, NotificationEmitter};
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
 
-async fn client_server(prefix: String) {
+async fn client_server(qube_name: String) {
     let emitter = Rc::new(
-        NotificationEmitter::new(prefix)
-            .await
-            .expect("Cannot connect to notifcation daemon"),
+        NotificationEmitter::new(
+            qube_name.to_owned() + ": ",
+            "Qubes VM ".to_owned() + &*qube_name,
+        )
+        .await
+        .expect("Cannot connect to notifcation daemon"),
     );
     let options = bincode::DefaultOptions::new()
         .with_fixint_encoding()
@@ -109,6 +112,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let local_set = tokio::task::LocalSet::new();
 
     let source = std::env::var("QREXEC_REMOTE_DOMAIN").expect("No remote domain in qrexec");
-    local_set.spawn_local(client_server(source + ": "));
+    local_set.spawn_local(client_server(source));
     Ok(local_set.await)
 }

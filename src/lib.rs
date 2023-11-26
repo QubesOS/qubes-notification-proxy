@@ -14,7 +14,7 @@ pub trait Notifications {
     fn get_capabilities(&self) -> zbus::Result<(Vec<String>,)>;
     fn notify(
         &self,
-        app_name: &str,
+        app_name: String,
         replaces_id: u32,
         app_icon: &str,
         summary: &str,
@@ -215,13 +215,14 @@ pub struct NotificationEmitter {
     proxy: NotificationsProxy<'static>,
     capabilities: Capabilities,
     prefix: String,
+    application_name: String,
 }
 
 impl NotificationEmitter {
     pub fn capabilities(&self) -> Capabilities {
         self.capabilities
     }
-    pub async fn new(prefix: String) -> zbus::Result<Self> {
+    pub async fn new(prefix: String, application_name: String) -> zbus::Result<Self> {
         let connection = Connection::session().await?;
         let proxy = NotificationsProxy::new(&connection).await?;
         let capabilities_list = proxy.get_capabilities().await?.0;
@@ -245,6 +246,7 @@ impl NotificationEmitter {
             proxy,
             capabilities,
             prefix,
+            application_name,
         })
     }
 }
@@ -346,7 +348,7 @@ impl NotificationEmitter {
 
         // In the future this should be a validated application name prefixed
         // by the qube name.
-        let application_name = "";
+        let application_name = self.application_name.clone();
 
         // Ideally the icon would be associated with the calling application,
         // with an image suitably processed by Qubes OS to indicate trust.
