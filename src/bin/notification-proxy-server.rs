@@ -24,7 +24,7 @@ async fn client_server(qube_name: String) {
         .closed()
         .await
         .expect("Cannot register for closed signals");
-    let mut _invoked_stream = emitter
+    let mut invoked_stream = emitter
         .invocations()
         .await
         .expect("Cannot register for invoked signals");
@@ -49,7 +49,7 @@ async fn client_server(qube_name: String) {
     });
     let stdout_ = stdout.clone();
     let _handle = tokio::task::spawn_local(async move {
-        while let Some(item) = _invoked_stream.next().await {
+        while let Some(item) = invoked_stream.next().await {
             let item = match item.args() {
                 Ok(item) => item,
                 Err(e) => {
