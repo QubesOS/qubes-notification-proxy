@@ -36,6 +36,24 @@ pub trait Notifications {
 
 pub const MAX_MESSAGE_SIZE: u32 = 0x1_000_000; // max size in bytes
 
+fn is_valid_action_name(action: &[u8]) -> bool {
+    // 255 is arbitrary but should be more than enough
+    if action.is_empty() || action.len() > 255 {
+        return false;
+    }
+    match action[0] {
+        b'a'..=b'z' | b'A'..=b'Z' => {}
+        _ => return false,
+    }
+    for i in &action[1..] {
+        match i {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' => {}
+            _ => return false,
+        }
+    }
+    return true;
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 /// Messages sent by a notification server
 pub enum ReplyMessage {
@@ -377,8 +395,16 @@ impl NotificationEmitter {
         let icon = "";
         let actions = if self.actions() {
             let mut actions = Vec::with_capacity(untrusted_actions.len());
-            for i in untrusted_actions {
-                actions.push(sanitize_str(&*i))
+            for (count, s) in untrusted_actions.iter().enumerate() {
+                if count & 1 == 0 {
+                    if !is_valid_action_name(s.as_bytes()) {
+                        return Err(zbus::Error::Failure("Invalid action name".to_owned()));
+                    }
+                    // Sanitized by is_valid_action_name()
+                    actions.push(s.to_owned())
+                } else {
+                    actions.push(sanitize_str(&*s))
+                }
             }
             actions
         } else {
