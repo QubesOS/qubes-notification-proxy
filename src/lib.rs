@@ -29,6 +29,9 @@ pub trait Notifications {
     fn notification_closed(&self, id: u32, reason: u32) -> Result<()>;
     #[dbus_proxy(signal)]
     fn action_invoked(&self, id: u32, action_key: String) -> Result<()>;
+    // Non-standard KDE extension
+    #[dbus_proxy(signal)]
+    fn notification_replied(&self, id: u32, text: String) -> Result<()>;
 }
 
 pub const MAX_MESSAGE_SIZE: u32 = 0x1_000_000; // max size in bytes
@@ -198,16 +201,17 @@ pub fn sanitize_str(arg: &str) -> String {
 bitflags! {
     #[derive(Default)]
     pub struct Capabilities: u16 {
-        const BODY            = 0b0000000001;
-        const BODY_HYPERLINKS = 0b0000000010;
-        const BODY_MARKUP     = 0b0000000100;
-        const PERSISTENCE     = 0b0000001000;
-        const SOUND           = 0b0000010000;
-        const BODY_IMAGES     = 0b0000100000;
-        const ICON_MULTI      = 0b0001000000;
-        const ICON_STATIC     = 0b0010000000;
-        const ACTIONS         = 0b0100000000;
-        const ACTION_ICONS    = 0b1000000000;
+        const BODY            = 0b00000000001;
+        const BODY_HYPERLINKS = 0b00000000010;
+        const BODY_MARKUP     = 0b00000000100;
+        const PERSISTENCE     = 0b00000001000;
+        const SOUND           = 0b00000010000;
+        const BODY_IMAGES     = 0b00000100000;
+        const ICON_MULTI      = 0b00001000000;
+        const ICON_STATIC     = 0b00010000000;
+        const ACTIONS         = 0b00100000000;
+        const ACTION_ICONS    = 0b01000000000;
+        const INLINE_REPLY    = 0b10000000000;
    }
 }
 
@@ -239,6 +243,7 @@ impl NotificationEmitter {
                 "icon-static" => capabilities |= Capabilities::ICON_STATIC,
                 "actions" => capabilities |= Capabilities::ACTIONS,
                 "icon-multi" => capabilities |= Capabilities::ICON_MULTI,
+                "inline-reply" => capabilities |= Capabilities::INLINE_REPLY,
                 _ => eprintln!("Unknown capability {} detected", capability_str),
             }
         }
@@ -330,6 +335,9 @@ impl NotificationEmitter {
     }
     pub async fn invocations(&self) -> zbus::Result<ActionInvokedStream<'static>> {
         self.proxy.receive_action_invoked().await
+    }
+    pub async fn replies(&self) -> zbus::Result<NotificationRepliedStream<'static>> {
+        self.proxy.receive_notification_replied().await
     }
     pub async fn send_notification(
         &self,
