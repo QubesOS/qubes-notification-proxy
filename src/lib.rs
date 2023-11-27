@@ -38,7 +38,10 @@ pub const MAX_MESSAGE_SIZE: u32 = 0x1_000_000; // max size in bytes
 
 fn is_valid_action_name(action: &[u8]) -> bool {
     // 255 is arbitrary but should be more than enough
-    if action.is_empty() || action.len() > 255 {
+    if action.is_empty() {
+        return false;
+    }
+    if action.len() > 255 {
         return false;
     }
     match action[0] {
@@ -202,18 +205,51 @@ extern "C" {
     fn qubes_pure_code_point_safe_for_display(code_point: u32) -> bool;
 }
 
+/// This imposes the following restrictions:
+///
+/// - Characters are limited to a safe subset of Unicode.
+/// - Lines are limited to 1000 characters.
+/// - Text is truncated after 500 lines.
+///
+/// Too many lines in particular is known to make xfce4-notifyd spin and consume 100% CPU.
 pub fn sanitize_str(arg: &str) -> String {
-    arg.chars()
-        .map(|c| {
+    let mut res = String::with_capacity(arg.len());
+    let mut iter = arg.chars().peekable();
+    let mut counter = 0;
+    let mut lines = 0;
+    while let Some(c) = iter.next() {
+        res.push(
             // SAFETY: this function is not actually unsafe
-            if unsafe { qubes_pure_code_point_safe_for_display(c.into()) } {
+            if unsafe { qubes_pure_code_point_safe_for_display(c.into()) } || c == '\t' {
+                counter += 1;
                 c
+            } else if c == '\n' {
+                counter = 0;
+                lines += 1;
+                c
+            } else if c == '\r' {
+                if iter.peek() == Some(&'\n') {
+                    continue;
+                }
+                counter = 0;
+                lines += 1;
+                '\n'
             } else {
                 // This is U+FFFD REPLACEMENT CHARACTER
+                counter += 1;
                 '\u{FFFD}'
-            }
-        })
-        .collect()
+            },
+        );
+        if counter > 1000 {
+            res.push('\n');
+            counter = 0;
+            lines += 1;
+        }
+        if lines > 500 {
+            break; // notification daemon will hang if there are too many lines
+        }
+    }
+    res
 }
 
 bitflags! {
@@ -412,7 +448,6 @@ impl NotificationEmitter {
         };
 
         // this is slow but I don't care, the D-Bus call is orders of magnitude slower
-
         // Set up the hints
         let mut hints = HashMap::new();
         if let Some(urgency) = urgency {

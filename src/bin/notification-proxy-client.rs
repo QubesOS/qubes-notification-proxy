@@ -30,6 +30,44 @@ struct Hints {
     image_data_deprecated1: Option<ImageParameters>,
 }
 
+macro_rules! log_return {
+    ($($arg:tt),*$(,)?) => {{
+        eprintln!($($arg),*);
+        return Err(zbus::fdo::Error::InvalidArgs(format!($($arg),*)))
+    }};
+}
+
+fn is_valid_action_name(action: &[u8]) -> zbus::fdo::Result<()> {
+    // 255 is arbitrary but should be more than enough
+    if action.is_empty() {
+        log_return!("Empty action name refused, please report this!");
+    }
+    if action.len() > 255 {
+        log_return!(
+            "Action {:?} has a length greater than 255 bytes.  Please report this.",
+            action
+        )
+    }
+    match action[0] {
+        b'a'..=b'z' | b'A'..=b'Z' => {}
+        _ => log_return!(
+            "Action {:?} does not start with an ASCII letter.  Please report this.",
+            action
+        ),
+    }
+    for (count, i) in action[1..].iter().enumerate() {
+        match i {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' => {}
+            _ => log_return!(
+                "Action {:?} has a forbidden byte {:?} at position {}.  Please report this.",
+                action,
+                i,
+                count,
+            ),
+        }
+    }
+    return Ok(());
+}
 #[zbus::dbus_interface(name = "org.freedesktop.Notifications")]
 impl Server {
     async fn get_capabilities(&self) -> zbus::fdo::Result<(Vec<String>,)> {
@@ -141,6 +179,14 @@ impl Server {
             }
         }
         let id = self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if actions.len() & 1 != 0 {
+            log_return!("Actions array has odd length");
+        }
+
+        for i in 0..actions.len() / 2 {
+            is_valid_action_name(actions[i * 2].as_bytes())?
+        }
+
         let notification = Notification {
             id,
             suppress_sound,
