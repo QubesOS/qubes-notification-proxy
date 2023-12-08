@@ -1,9 +1,11 @@
 use bincode::Options;
 use futures_util::StreamExt;
-use notification_emitter::{MessageWriter, ReplyMessage, MAX_MESSAGE_SIZE};
-use notification_emitter::{Notification, NotificationEmitter};
+use notification_emitter::{merge_versions, Notification, NotificationEmitter};
+use notification_emitter::{
+    MessageWriter, ReplyMessage, MAJOR_VERSION, MAX_MESSAGE_SIZE, MINOR_VERSION,
+};
 use std::rc::Rc;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 async fn client_server(qube_name: String) {
     let emitter = Rc::new(
@@ -19,6 +21,31 @@ async fn client_server(qube_name: String) {
         .with_native_endian()
         .reject_trailing_bytes();
     let mut stdin = tokio::io::stdin();
+    {
+        let mut out = tokio::io::stdout();
+        out.write_u32_le(merge_versions(MAJOR_VERSION, MINOR_VERSION).to_le())
+            .await
+            .expect("Cannot write version for version negotiation");
+        out.flush().await.expect("flush failed");
+    }
+    let reply_version: u32 = stdin
+        .read_u32_le()
+        .await
+        .expect("Cannot read reply")
+        .to_le();
+    let (reply_major, reply_minor) = notification_emitter::split_version(reply_version);
+    if reply_major != MAJOR_VERSION {
+        panic!(
+            "Version mismatch: client supports version {reply_major} \
+            but the version supported by this server is {MAJOR_VERSION}"
+        );
+    }
+    if reply_minor > MINOR_VERSION {
+        panic!(
+            "Version mismatch: client supports version {reply_minor} \
+but this server only supports version {MINOR_VERSION}"
+        );
+    }
     let stdout = MessageWriter::new();
     let mut closed_stream = emitter
         .closed()

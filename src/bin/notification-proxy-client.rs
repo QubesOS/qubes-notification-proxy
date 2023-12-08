@@ -1,7 +1,7 @@
 use bincode::Options;
 use futures_channel::oneshot::Sender;
 use notification_emitter::{ImageParameters, ReplyMessage, MAX_MESSAGE_SIZE};
-use notification_emitter::{Notification, Urgency};
+use notification_emitter::{Notification, Urgency, MAJOR_VERSION, MINOR_VERSION};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -68,6 +68,7 @@ fn is_valid_action_name(action: &[u8]) -> zbus::fdo::Result<()> {
     }
     return Ok(());
 }
+
 #[zbus::dbus_interface(name = "org.freedesktop.Notifications")]
 impl Server {
     async fn get_capabilities(&self) -> zbus::fdo::Result<(Vec<String>,)> {
@@ -229,9 +230,32 @@ impl Server {
             .map_err(|(_a, b)| zbus::fdo::Error::Failed(b.unwrap_or("failed".to_owned())))
     }
 }
+
 async fn client_server() {
+    let mut stdin = tokio::io::stdin();
+    let mut out = tokio::io::stdout();
+    let version = stdin
+        .read_u32_le()
+        .await
+        .expect("Error reading from stdin")
+        .to_le();
+    let (daemon_major_version, daemon_minor_version) = notification_emitter::split_version(version);
+    let minor_version = (daemon_minor_version as u16).min(MINOR_VERSION);
+    out.write_u32_le(notification_emitter::merge_versions(
+        MAJOR_VERSION,
+        minor_version,
+    ))
+    .await
+    .expect("error writing to daemon");
+    out.flush().await.expect("flush failed");
+    if daemon_major_version != MAJOR_VERSION {
+        panic!(
+            "Major version mismatch: Daemon supports {} but this client supports {}",
+            daemon_major_version, MAJOR_VERSION
+        );
+    }
     let server = Arc::new(Mutex::new(ServerInner {
-        out: tokio::io::stdout(),
+        out,
         map: HashMap::new(),
     }));
     let connection = zbus::ConnectionBuilder::session()
@@ -251,7 +275,6 @@ async fn client_server() {
         .interface::<_, Server>("/org/freedesktop/Notifications")
         .await
         .expect("something went wrong");
-    let mut stdin = tokio::io::stdin();
     loop {
         let size = stdin
             .read_u32_le()

@@ -108,6 +108,17 @@ pub const MAX_SIZE: usize = 1usize << 21; // This is 2MiB, more than enough
 pub const MAX_WIDTH: i32 = 255;
 pub const MAX_HEIGHT: i32 = 255;
 
+pub const MAJOR_VERSION: u16 = 1;
+pub const MINOR_VERSION: u16 = 0;
+
+pub const fn merge_versions(major: u16, minor: u16) -> u32 {
+    (major as u32) << 16 | (minor as u32)
+}
+
+pub const fn split_version(combined: u32) -> (u16, u16) {
+    ((combined >> 16) as _, combined as _)
+}
+
 #[derive(Serialize, Deserialize, Debug, Value, Type)]
 /// Image parameters
 pub struct ImageParameters {
