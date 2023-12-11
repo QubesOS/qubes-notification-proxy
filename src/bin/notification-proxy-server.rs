@@ -1,6 +1,6 @@
 use bincode::Options;
 use futures_util::StreamExt;
-use notification_emitter::{merge_versions, Notification, NotificationEmitter};
+use notification_emitter::{merge_versions, NotificationEmitter};
 use notification_emitter::{
     MessageWriter, ReplyMessage, MAJOR_VERSION, MAX_MESSAGE_SIZE, MINOR_VERSION,
 };
@@ -110,14 +110,14 @@ but this server only supports version {MINOR_VERSION}"
             .await
             .expect("error reading from stdin");
         assert_eq!(bytes_read, size as _);
-        let message: Notification = options
+        let message: notification_emitter::Message = options
             .deserialize(&bytes)
             .expect("malformed input from client");
         let sequence = message.id;
         let emitter = emitter.clone();
         let stdout = stdout.clone();
         tokio::task::spawn_local(async move {
-            let out = emitter.send_notification(message).await;
+            let out = emitter.send_notification(message.notification).await;
             let data = options
                 .serialize(&match out {
                     Ok(id) => ReplyMessage::Id { id, sequence },

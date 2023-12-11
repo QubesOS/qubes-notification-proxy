@@ -60,7 +60,7 @@ fn is_valid_action_name(action: &[u8]) -> bool {
 #[derive(Serialize, Deserialize, Debug)]
 /// Messages sent by a notification server
 pub enum ReplyMessage {
-    /// Notification successfully sent.
+    /// Notification successfully sent.  Since version 0
     Id {
         /// ID of the created notification.
         id: u32,
@@ -76,6 +76,7 @@ pub enum ReplyMessage {
         /// The sequence number of this method call
         sequence: u64,
     },
+    /// Something unknown went wrong.
     UnknownError {
         /// The sequence number of this method call
         sequence: u64,
@@ -349,24 +350,31 @@ impl MessageWriter {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Notification {
+pub struct Message {
     pub id: u64,
-    pub suppress_sound: bool,
-    pub transient: bool,
-    pub urgency: Option<Urgency>,
-    // This is just an ID, and it can't be validated in a non-racy way anyway.
-    // I assume that any decent notification daemon will handle an invalid ID
-    // value correctly, but this code should probably test for this at the start
-    // so that it cannot be used with a server that crashes in this case.
-    pub replaces_id: u32,
-    pub summary: String,
-    // FIXME: support markup (strictly sanitized and validated) if the server
-    // supports it.
-    pub body: String,
-    pub actions: Vec<String>,
-    pub category: Option<String>,
-    pub expire_timeout: i32,
-    pub image: Option<ImageParameters>,
+    pub notification: Notification,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Notification {
+    V1 {
+        suppress_sound: bool,
+        transient: bool,
+        urgency: Option<Urgency>,
+        // This is just an ID, and it can't be validated in a non-racy way anyway.
+        // I assume that any decent notification daemon will handle an invalid ID
+        // value correctly, but this code should probably test for this at the start
+        // so that it cannot be used with a server that crashes in this case.
+        replaces_id: u32,
+        summary: String,
+        // FIXME: support markup (strictly sanitized and validated) if the server
+        // supports it.
+        body: String,
+        actions: Vec<String>,
+        category: Option<String>,
+        expire_timeout: i32,
+        image: Option<ImageParameters>,
+    },
 }
 
 impl NotificationEmitter {
@@ -406,8 +414,7 @@ impl NotificationEmitter {
     }
     pub async fn send_notification(
         &self,
-        Notification {
-            id: _,
+        Notification::V1 {
             suppress_sound,
             transient,
             urgency,
@@ -538,5 +545,54 @@ impl NotificationEmitter {
                 expire_timeout,
             )
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_discriminant_serialized() {
+        use bincode::Options as _;
+        let options = bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .with_native_endian()
+            .reject_trailing_bytes();
+        let v = options
+            .serialize(&Notification::V1 {
+                suppress_sound: true,
+                transient: false,
+                urgency: None,
+                replaces_id: 0,
+                summary: "".to_owned(),
+                body: "".to_owned(),
+                actions: vec![],
+                category: None,
+                expire_timeout: 0,
+                image: None,
+            })
+            .unwrap();
+        assert_eq!(&v[..4], &[0, 0, 0, 0][..])
+    }
+    #[test]
+    fn test_enum_extensibility() {
+        #[derive(Serialize, Deserialize)]
+        enum A {
+            B { x: bool },
+        }
+        #[derive(Serialize, Deserialize)]
+        enum D {
+            B { x: bool },
+            C { x: u32 },
+        }
+        use bincode::Options as _;
+        let options = bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .with_native_endian()
+            .reject_trailing_bytes();
+        let serialized = options.serialize(&A::B { x: true }).unwrap();
+        let deserialized: D = options.deserialize(&serialized).unwrap();
+        assert!(matches!(deserialized, D::B { x: true }));
+        assert_eq!(serialized, options.serialize(&D::B { x: true }).unwrap());
     }
 }

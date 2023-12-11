@@ -1,7 +1,7 @@
 use bincode::Options;
 use futures_channel::oneshot::Sender;
 use notification_emitter::{ImageParameters, ReplyMessage, MAX_MESSAGE_SIZE};
-use notification_emitter::{Notification, Urgency, MAJOR_VERSION, MINOR_VERSION};
+use notification_emitter::{Message, Notification, Urgency, MAJOR_VERSION, MINOR_VERSION};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -188,18 +188,20 @@ impl Server {
             is_valid_action_name(actions[i * 2].as_bytes())?
         }
 
-        let notification = Notification {
+        let notification = Message {
             id,
-            suppress_sound,
-            transient,
-            urgency,
-            replaces_id,
-            summary,
-            body,
-            actions,
-            category,
-            expire_timeout,
-            image,
+            notification: Notification::V1 {
+                suppress_sound,
+                transient,
+                urgency,
+                replaces_id,
+                summary,
+                body,
+                actions,
+                category,
+                expire_timeout,
+                image,
+            },
         };
 
         let data = options
