@@ -101,6 +101,8 @@ impl Server {
         // Ignored.  We pass an empty string.
         _app_name: &str,
         replaces_id: u32,
+        // marmarek: read icon locally and send as image-data (if not provided already)? but also
+        // see comment in lib.rs
         _app_icon: String,
         summary: String,
         body: String,
@@ -272,6 +274,9 @@ async fn client_server() {
         .build()
         .await
         .expect("error");
+    // marmarek: object should be registered before requesting the org.freedesktop.Notifications
+    // name, to avoid race condition
+    // see https://dbus2.github.io/zbus/server.html#-service-activation-pitfalls
     let interface_ref = connection
         .object_server()
         .interface::<_, Server>("/org/freedesktop/Notifications")
@@ -309,6 +314,15 @@ async fn client_server() {
                 .map
                 .remove(&sequence)
                 .expect("server violated the protocol")
+                // marmarek: is sending real ID back to the client a good idea? the specification
+                // mandates ID to be unique (until wraps) for the notification server uptime, but
+                // if the GUI domain's server is restarted but this one isn't, it may result in a
+                // duplicated ID returned (much) earlier.
+                // Maybe better send sequence number as the ID instead and keep mapping on the
+                // server side? and remove stale entries when notification is closed (you get a
+                // dbus signal) or when the actual notification server gets restart (name owner
+                // change signal).
+                // See also the comment about replaces_id, you likely need to keep such map anyway.
                 .send(Ok(id))
                 .expect("task died"),
             ReplyMessage::DBusError {

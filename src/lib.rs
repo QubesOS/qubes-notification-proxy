@@ -345,6 +345,9 @@ impl MessageWriter {
             .write_all(&*data)
             .await
             .expect("error writing to stdout");
+        // marmarek: while testing I got `error writing to stdout: 0s { code: 32, kind: BrokenPipe,
+        // message: "Broken pipe" }` once, but it still worked after that; maybe this doesn't
+        // expect O_NONBLOCK? but that doesn't match BrokenPipe...
         guard.flush().await.expect("error writing to stdout");
     }
 }
@@ -365,6 +368,8 @@ pub enum Notification {
         // I assume that any decent notification daemon will handle an invalid ID
         // value correctly, but this code should probably test for this at the start
         // so that it cannot be used with a server that crashes in this case.
+        // marmarek: validate if the notification ID comes from this client (do not allow replacing
+        // notifications sent by other qubes)
         replaces_id: u32,
         summary: String,
         // FIXME: support markup (strictly sanitized and validated) if the server
@@ -440,12 +445,18 @@ impl NotificationEmitter {
 
         // In the future this should be a validated application name prefixed
         // by the qube name.
+        // marmarek: where the application name is visible in practice?
         let application_name = self.application_name.clone();
 
         // Ideally the icon would be associated with the calling application,
         // with an image suitably processed by Qubes OS to indicate trust.
         // However, there is no good way to do that in practice, so just pass
         // an empty string to indicate "no icon".
+        // marmarek: use qube icon for now? you need qube label for that, but maybe for now you can
+        // spawn `qvm-prefs <vmname> label` for that? it isn't great, but you can do that one time
+        // at service start; if not using qvm-prefs, you'd need to implement both dom0 (direct
+        // to qubesd) and non-dom0 (via qrexec) methods - it would be useful to have such Rust
+        // bindings at some point, but lets keep the scope narrow for now
         let icon = "";
         let actions = if self.actions() {
             let mut actions = Vec::with_capacity(untrusted_actions.len());
@@ -502,6 +513,8 @@ impl NotificationEmitter {
             if category[category.len() - 1] == b'.' {
                 return Err(zbus::Error::MissingParameter("Invalid category"));
             }
+            // marmarek: enforce some max length? looking at currently defined categories, 64 feels
+            // like a safe upper bound
             // sanitize end
             hints.insert("category", Value::from(category));
         }
@@ -511,6 +524,10 @@ impl NotificationEmitter {
                 Err(e) => return Err(zbus::Error::MissingParameter(e)),
             };
         }
+        // marmarek: the above image should be processed to indicate from where the notification
+        // comes; something like overlaying qube icon in the right bottom icon corner; but that can
+        // come in the next iteration, but until then, ignore 'image-data' hint as that would
+        // override app icon (see the earlier comment)
         let mut escaped_body;
         if self.body_markup() {
             let body = sanitize_str(&*untrusted_body);
@@ -595,4 +612,5 @@ mod tests {
         assert!(matches!(deserialized, D::B { x: true }));
         assert_eq!(serialized, options.serialize(&D::B { x: true }).unwrap());
     }
+    // marmarek: add some tests for markup escaping and image validation
 }
