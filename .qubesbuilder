@@ -9,3 +9,15 @@ vm:
   debian:
     build:
     - debian
+
+vm-bookworm:
+  debian:
+    build: []
+
+vm-bullseye:
+  debian:
+    build: []
+
+vm-jammy:
+  debian:
+    build: []
