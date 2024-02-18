@@ -3,10 +3,11 @@ Section: admin
 Priority: optional
 Maintainer: Demi Marie Obenour <demi@invisiblethingslab.com>
 Build-Depends: debhelper (>= 12),
+ debhelper-compat (= 12),
  dh-cargo (>= 25),
  cargo:native,
  rustc:native,
- libstd-rust-dev.
+ libstd-rust-dev,
  librust-bincode-dev (>= 1.3.3),
  librust-bitflags-dev (>= 1.3.2),
  librust-futures-channel-dev (>= 0.3.28),
@@ -15,6 +16,7 @@ Build-Depends: debhelper (>= 12),
  librust-serde-derive-dev (>= 1.0.185),
  librust-tokio-dev (>= 1.29.1),
  librust-zbus-dev (>= 3.14.1),
+ libqubes-pure-dev,
 Standards-Version: 4.6.1
 Vcs-Git: https://github.com/QubesOS/qubes-notification-proxy.git
 Vcs-Browser: https://github.com/QubesOS/qubes-notification-proxy
