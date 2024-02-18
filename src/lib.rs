@@ -545,11 +545,14 @@ impl NotificationEmitter {
             // sanitize end
             hints.insert("category", Value::from(category));
         }
-        if let Some(image) = image {
-            match serialize_image(image) {
-                Ok(value) => hints.insert("image-data", value),
-                Err(e) => return Err(zbus::Error::MissingParameter(e)),
-            };
+        // Temporarily disabled due to lack of image processing
+        if false {
+            if let Some(image) = image {
+                match serialize_image(image) {
+                    Ok(value) => hints.insert("image-data", value),
+                    Err(e) => return Err(zbus::Error::MissingParameter(e)),
+                };
+            }
         }
         let mut escaped_body;
         if self.body_markup() {
