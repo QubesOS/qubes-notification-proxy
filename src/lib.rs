@@ -5,6 +5,8 @@ use std::rc::Rc;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::Mutex;
 use zbus::{dbus_proxy, zvariant::Type, zvariant::Value, Connection};
+mod maps;
+use maps::{GuestId, HostId, Maps};
 #[dbus_proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
@@ -286,6 +288,7 @@ pub struct NotificationEmitter {
     capabilities: Capabilities,
     prefix: String,
     application_name: String,
+    maps: std::cell::RefCell<Maps>,
 }
 
 impl NotificationEmitter {
@@ -323,6 +326,7 @@ impl NotificationEmitter {
             capabilities,
             prefix,
             application_name,
+            maps: Default::default(),
         })
     }
 }
@@ -361,10 +365,6 @@ pub enum Notification {
         suppress_sound: bool,
         transient: bool,
         urgency: Option<Urgency>,
-        // This is just an ID, and it can't be validated in a non-racy way anyway.
-        // I assume that any decent notification daemon will handle an invalid ID
-        // value correctly, but this code should probably test for this at the start
-        // so that it cannot be used with a server that crashes in this case.
         replaces_id: u32,
         summary: String,
         // FIXME: support markup (strictly sanitized and validated) if the server
@@ -412,6 +412,30 @@ impl NotificationEmitter {
     pub async fn replies(&self) -> zbus::Result<NotificationRepliedStream<'static>> {
         self.proxy.receive_notification_replied().await
     }
+    pub fn translate_host_id(&self, id: u32) -> Option<u32> {
+        match HostId::new_less_safe(id) {
+            None => Some(0),
+            Some(a) => match self.maps.borrow().lookup_host_id(a) {
+                None => {
+                    eprintln!("ID {} not found!", u32::from(a));
+                    None
+                }
+                Some(guest) => Some(guest.into()),
+            },
+        }
+    }
+    pub fn remove_host_id(&self, id: u32) -> Option<u32> {
+        match HostId::new_less_safe(id) {
+            None => Some(0),
+            Some(a) => match self.maps.borrow_mut().remove_host_id(a) {
+                None => {
+                    eprintln!("ID {} not found!", u32::from(a));
+                    None
+                }
+                Some(guest) => Some(guest.into()),
+            },
+        }
+    }
     pub async fn send_notification(
         &self,
         Notification::V1 {
@@ -426,7 +450,20 @@ impl NotificationEmitter {
             expire_timeout,
             image,
         }: Notification,
-    ) -> zbus::Result<u32> {
+    ) -> zbus::Result<GuestId> {
+        let guest_id = maps::GuestId::new_less_safe(replaces_id);
+        let host_id = match guest_id {
+            None => None,
+            Some(id) => match self.maps.borrow().lookup_guest_id(id) {
+                None => {
+                    return Err(zbus::Error::Failure(format!(
+                        "ID {} not found in guest-to-host lookup map",
+                        u32::from(id),
+                    )))
+                }
+                Some(id) => Some(id),
+            },
+        };
         if expire_timeout < -1 {
             return Err(zbus::Error::Unsupported);
         }
@@ -536,18 +573,27 @@ impl NotificationEmitter {
         } else {
             escaped_body = sanitize_str(&*untrusted_body)
         }
-        self.proxy
-            .notify(
-                application_name,
-                replaces_id,
-                icon,
-                &*(self.prefix.clone() + &*sanitize_str(&*untrusted_summary)),
-                &*escaped_body,
-                &*actions,
-                &hints,
-                expire_timeout,
-            )
-            .await
+        let host_id_num = match host_id {
+            None => 0,
+            Some(i) => i.into(),
+        };
+        let id = HostId::new_less_safe(
+            self.proxy
+                .notify(
+                    application_name,
+                    host_id_num,
+                    icon,
+                    &*(self.prefix.clone() + &*sanitize_str(&*untrusted_summary)),
+                    &*escaped_body,
+                    &*actions,
+                    &hints,
+                    expire_timeout,
+                )
+                .await?,
+        )
+        .expect("Notification daemon sent a zero ID?");
+
+        Ok(self.maps.borrow_mut().next_id(id))
     }
 }
 

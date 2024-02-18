@@ -47,6 +47,7 @@ but this server only supports version {MINOR_VERSION}"
         );
     }
     let stdout = MessageWriter::new();
+    let emitter_ = emitter.clone();
     let mut closed_stream = emitter
         .closed()
         .await
@@ -65,9 +66,13 @@ but this server only supports version {MINOR_VERSION}"
                     continue;
                 }
             };
+            let id = match emitter_.remove_host_id(item.id) {
+                None => continue,
+                Some(id) => id,
+            };
             let data = options
                 .serialize(&ReplyMessage::Dismissed {
-                    id: item.id,
+                    id,
                     reason: item.reason,
                 })
                 .expect("Serialization failed?");
@@ -75,6 +80,7 @@ but this server only supports version {MINOR_VERSION}"
         }
     });
     let stdout_ = stdout.clone();
+    let emitter_ = emitter.clone();
     let _handle = tokio::task::spawn_local(async move {
         while let Some(item) = invoked_stream.next().await {
             let item = match item.args() {
@@ -84,9 +90,13 @@ but this server only supports version {MINOR_VERSION}"
                     continue;
                 }
             };
+            let id = match emitter_.translate_host_id(item.id) {
+                None => continue,
+                Some(id) => id,
+            };
             let data = options
                 .serialize(&ReplyMessage::ActionInvoked {
-                    id: item.id,
+                    id,
                     action: item.action_key,
                 })
                 .expect("Serialization failed?");
@@ -120,7 +130,10 @@ but this server only supports version {MINOR_VERSION}"
             let out = emitter.send_notification(message.notification).await;
             let data = options
                 .serialize(&match out {
-                    Ok(id) => ReplyMessage::Id { id, sequence },
+                    Ok(id) => ReplyMessage::Id {
+                        id: id.into(),
+                        sequence,
+                    },
                     Err(zbus::Error::MethodError(name, message, _)) => ReplyMessage::DBusError {
                         name: name.to_string(),
                         message,
