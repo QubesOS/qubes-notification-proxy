@@ -489,7 +489,7 @@ impl NotificationEmitter {
         if let Some(ref untrusted_category) = untrusted_category {
             let category = untrusted_category.as_bytes();
             if category.len() > 64 {
-                return Err(zbus::Error::MissingParameter("Invalid category"))
+                return Err(zbus::Error::MissingParameter("Invalid category"));
             }
             match category.get(0) {
                 Some(b'a'..=b'z') => {}
