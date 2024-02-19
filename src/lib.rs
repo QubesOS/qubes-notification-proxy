@@ -150,6 +150,9 @@ pub struct ImageParameters {
     pub untrusted_data: Vec<u8>,
 }
 
+const MAX_LINES: usize = 500;
+const MAX_CHARS_PER_LINE: usize = 1000;
+
 fn serialize_image(
     ImageParameters {
         untrusted_width,
@@ -263,12 +266,12 @@ pub fn sanitize_str(arg: &str) -> String {
                 '\u{FFFD}'
             },
         );
-        if counter > 1000 {
+        if counter >= MAX_CHARS_PER_LINE {
             res.push('\n');
             counter = 0;
             lines += 1;
         }
-        if lines > 500 {
+        if lines >= MAX_LINES {
             break; // notification daemon will hang if there are too many lines
         }
     }
@@ -684,5 +687,47 @@ mod tests {
         let deserialized: D = options.deserialize(&serialized).unwrap();
         assert!(matches!(deserialized, D::B { x: true }));
         assert_eq!(serialized, options.serialize(&D::B { x: true }).unwrap());
+    }
+
+    #[test]
+    fn test_sanitize_str_basic() {
+        // The underlying C library has extensive tests,
+        // including a test that it is memory safe on all possible
+        // inputs.  Only do minimal tests here.
+        assert_eq!(sanitize_str("&"), "&".to_owned());
+        assert_eq!(sanitize_str("\n"), "\n".to_owned());
+        assert_eq!(sanitize_str("\t"), "\t".to_owned());
+        // \x15 isn't safe
+        assert_eq!(sanitize_str("a\x15\n"), "a\u{FFFD}\n".to_owned());
+    }
+
+    #[test]
+    fn test_too_many_lines() {
+        let max_lines = str::repeat("a\n", 500);
+        assert_eq!(&sanitize_str(&*max_lines), &max_lines, "500 lines are fine");
+        assert_eq!(
+            sanitize_str(&*(max_lines.clone() + &"a\n"[..])),
+            max_lines,
+            "501 lines are not"
+        );
+    }
+    #[test]
+    fn test_too_long_lines() {
+        let really_really_long = str::repeat("a", MAX_LINES * MAX_CHARS_PER_LINE);
+        let long_sanitized = sanitize_str(&*really_really_long);
+        assert_eq!(long_sanitized.len(), (MAX_CHARS_PER_LINE + 1) * MAX_LINES);
+        let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
+        assert_eq!(long_sanitized.len(), cmp.len());
+        assert_eq!(long_sanitized, cmp);
+    }
+
+    #[test]
+    fn test_gigunda() {
+        let really_really_long = str::repeat("a", MAX_LINES * 2 * MAX_CHARS_PER_LINE);
+        let long_sanitized = sanitize_str(&*really_really_long);
+        assert_eq!(long_sanitized.len(), (MAX_CHARS_PER_LINE + 1) * MAX_LINES);
+        let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
+        assert_eq!(long_sanitized.len(), cmp.len());
+        assert_eq!(long_sanitized, cmp);
     }
 }
