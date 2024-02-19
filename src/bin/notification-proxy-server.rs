@@ -8,14 +8,15 @@ use std::rc::Rc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 async fn client_server(qube_name: String) {
-    let emitter = Rc::new(
-        NotificationEmitter::new(
-            qube_name.to_owned() + ": ",
-            "Qubes VM ".to_owned() + &*qube_name,
-        )
-        .await
-        .expect("Cannot connect to notifcation daemon"),
-    );
+    let (emitter, mut server_name_owner_changed) = NotificationEmitter::new(
+        qube_name.to_owned() + ": ",
+        "Qubes VM ".to_owned() + &*qube_name,
+    )
+    .await
+    .expect("Cannot connect to notifcation daemon");
+    let (closed_stream, invoked_stream) =
+        futures_util::future::join(emitter.closed(), emitter.invocations()).await;
+    let emitter = Rc::new(emitter);
     let options = bincode::DefaultOptions::new()
         .with_fixint_encoding()
         .with_native_endian()
@@ -48,15 +49,22 @@ but this server only supports version {MINOR_VERSION}"
     }
     let stdout = MessageWriter::new();
     let emitter_ = emitter.clone();
-    let mut closed_stream = emitter
-        .closed()
-        .await
-        .expect("Cannot register for closed signals");
-    let mut invoked_stream = emitter
-        .invocations()
-        .await
-        .expect("Cannot register for invoked signals");
+    let mut closed_stream = closed_stream.expect("Cannot register for closed signals");
+    let mut invoked_stream = invoked_stream.expect("Cannot register for invoked signals");
     let stdout_ = stdout.clone();
+    let _handle = tokio::task::spawn_local(async move {
+        while let Some(item) = server_name_owner_changed.next().await {
+            let item = item
+                .args()
+                .expect("Got invalid NameOwnerChanged message from bus daemon");
+            assert_eq!(
+                item.name, "org.freedesktop.Notifications",
+                "Bus daemon sent message for name we didn't register for"
+            );
+            emitter_.clear()
+        }
+    });
+    let emitter_ = emitter.clone();
     let _handle = tokio::task::spawn_local(async move {
         while let Some(item) = closed_stream.next().await {
             let item = match item.args() {

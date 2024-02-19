@@ -259,86 +259,97 @@ async fn client_server() {
             daemon_major_version, MAJOR_VERSION
         );
     }
-    let server = Arc::new(Mutex::new(ServerInner {
-        out,
-        map: HashMap::new(),
-    }));
-    let connection = zbus::ConnectionBuilder::session()
-        .expect("cannot create session bus")
-        .name("org.freedesktop.Notifications")
-        .expect("cannot acquire name")
-        .serve_at(
-            "/org/freedesktop/Notifications",
-            Server(server.clone(), 0u64.into()),
-        )
-        .expect("cannot serve")
-        .build()
-        .await
-        .expect("error");
-    let interface_ref = connection
-        .object_server()
-        .interface::<_, Server>("/org/freedesktop/Notifications")
-        .await
-        .expect("something went wrong");
-    loop {
-        let size = stdin
-            .read_u32_le()
-            .await
-            .expect("Error reading from stdin")
-            .to_le();
-        if size > MAX_MESSAGE_SIZE {
-            panic!("Message too large ({} bytes)", size)
-        }
+    'outer: loop {
+        let server = Arc::new(Mutex::new(ServerInner {
+            out,
+            map: HashMap::new(),
+        }));
 
-        let mut bytes = vec![0; size as _];
-        let bytes_read = stdin
-            .read_exact(&mut bytes[..])
+        let connection = zbus::ConnectionBuilder::session()
+            .expect("cannot create session bus")
+            .name("org.freedesktop.Notifications")
+            .expect("cannot acquire name")
+            .serve_at(
+                "/org/freedesktop/Notifications",
+                Server(server.clone(), 0u64.into()),
+            )
+            .expect("cannot serve")
+            .build()
             .await
-            .expect("error reading from stdin");
-        assert_eq!(bytes_read, size as _);
-        eprintln!("{} bytes read!", bytes_read);
+            .expect("error");
+        let interface_ref = connection
+            .object_server()
+            .interface::<_, Server>("/org/freedesktop/Notifications")
+            .await
+            .expect("something went wrong");
+        loop {
+            let size = stdin
+                .read_u32_le()
+                .await
+                .expect("Error reading from stdin")
+                .to_le();
+            if size > MAX_MESSAGE_SIZE {
+                panic!("Message too large ({} bytes)", size)
+            }
 
-        let options = bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .with_native_endian()
-            .reject_trailing_bytes();
-        match options
-            .deserialize(&bytes)
-            .expect("malformed input from client")
-        {
-            ReplyMessage::Id { id, sequence } => server
-                .lock()
+            let mut bytes = vec![0; size as _];
+            let bytes_read = stdin
+                .read_exact(&mut bytes[..])
                 .await
-                .map
-                .remove(&sequence)
-                .expect("server violated the protocol")
-                .send(Ok(id))
-                .expect("task died"),
-            ReplyMessage::DBusError {
-                name,
-                message,
-                sequence,
-            } => server
-                .lock()
-                .await
-                .map
-                .remove(&sequence)
-                .expect("server violated the protocol")
-                .send(Err((name, message)))
-                .expect("task died"),
-            ReplyMessage::Dismissed { id, reason } => {
-                let x = interface_ref.get().await;
-                x.notification_closed(interface_ref.signal_context(), id, reason)
+                .expect("error reading from stdin");
+            assert_eq!(bytes_read, size as _);
+            eprintln!("{} bytes read!", bytes_read);
+
+            let options = bincode::DefaultOptions::new()
+                .with_fixint_encoding()
+                .with_native_endian()
+                .reject_trailing_bytes();
+            match options
+                .deserialize(&bytes)
+                .expect("malformed input from client")
+            {
+                ReplyMessage::Id { id, sequence } => server
+                    .lock()
                     .await
-                    .expect("cannot emit signal");
-            }
-            ReplyMessage::ActionInvoked { id, action } => {
-                let x = interface_ref.get().await;
-                x.action_invoked(interface_ref.signal_context(), id, action)
+                    .map
+                    .remove(&sequence)
+                    .expect("server violated the protocol")
+                    .send(Ok(id))
+                    .expect("task died"),
+                ReplyMessage::DBusError {
+                    name,
+                    message,
+                    sequence,
+                } => server
+                    .lock()
                     .await
-                    .expect("cannot emit signal");
+                    .map
+                    .remove(&sequence)
+                    .expect("server violated the protocol")
+                    .send(Err((name, message)))
+                    .expect("task died"),
+                ReplyMessage::Dismissed { id, reason } => {
+                    let x = interface_ref.get().await;
+                    x.notification_closed(interface_ref.signal_context(), id, reason)
+                        .await
+                        .expect("cannot emit signal");
+                }
+                ReplyMessage::ActionInvoked { id, action } => {
+                    let x = interface_ref.get().await;
+                    x.action_invoked(interface_ref.signal_context(), id, action)
+                        .await
+                        .expect("cannot emit signal");
+                }
+                ReplyMessage::ServerRestart => {
+                    for (_key, value) in server.lock().await.map.drain() {
+                        value
+                            .send(Err(("Server died".to_string(), None)))
+                            .expect("task died");
+                    }
+                    break 'outer;
+                }
+                ReplyMessage::UnknownError { sequence: _ } => todo!(),
             }
-            ReplyMessage::UnknownError { sequence: _ } => todo!(),
         }
     }
 }

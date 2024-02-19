@@ -1,10 +1,17 @@
 use bitflags::bitflags;
+use futures_util::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::rc::Rc;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::Mutex;
-use zbus::{dbus_proxy, zvariant::Type, zvariant::Value, Connection};
+use zbus::{
+    dbus_proxy,
+    fdo::{DBusProxy, NameOwnerChangedStream},
+    zvariant::Type,
+    zvariant::Value,
+    Connection,
+};
 mod maps;
 use maps::{GuestId, HostId, Maps};
 #[dbus_proxy(
@@ -97,6 +104,8 @@ pub enum ReplyMessage {
         /// Action that was invoked
         action: String,
     },
+    /// Server restarted.
+    ServerRestart,
 }
 
 #[repr(u8)]
@@ -284,7 +293,7 @@ bitflags! {
 }
 
 pub struct NotificationEmitter {
-    proxy: NotificationsProxy<'static>,
+    notification_proxy: NotificationsProxy<'static>,
     capabilities: Capabilities,
     prefix: String,
     application_name: String,
@@ -295,10 +304,25 @@ impl NotificationEmitter {
     pub fn capabilities(&self) -> Capabilities {
         self.capabilities
     }
-    pub async fn new(prefix: String, application_name: String) -> zbus::Result<Self> {
+    pub async fn new(
+        prefix: String,
+        application_name: String,
+    ) -> zbus::Result<(Self, NameOwnerChangedStream<'static>)> {
         let connection = Connection::session().await?;
-        let proxy = NotificationsProxy::new(&connection).await?;
-        let capabilities_list = proxy.get_capabilities().await?.0;
+        let (dbus_proxy, notification_proxy) = futures_util::future::join(
+            DBusProxy::new(&connection).and_then(move |proxy| async move {
+                proxy
+                    .receive_name_owner_changed_with_args(&[(0, &*"org.freedesktop.Notifications")])
+                    .await
+            }),
+            NotificationsProxy::new(&connection).and_then(move |proxy| async move {
+                let caps = proxy.get_capabilities().await?.0;
+                Ok((proxy, caps))
+            }),
+        )
+        .await;
+        let (dbus_proxy, (notification_proxy, capabilities_list)) =
+            (dbus_proxy?, notification_proxy?);
         let mut capabilities = Capabilities::default();
         for capability_str in capabilities_list.into_iter() {
             match &*capability_str {
@@ -321,13 +345,17 @@ impl NotificationEmitter {
             capabilities.contains(Capabilities::BODY_MARKUP),
             capabilities.contains(Capabilities::PERSISTENCE),
         );
-        Ok(Self {
-            proxy,
-            capabilities,
-            prefix,
-            application_name,
-            maps: Default::default(),
-        })
+        Ok((
+            Self {
+                notification_proxy,
+
+                capabilities,
+                prefix,
+                application_name,
+                maps: Default::default(),
+            },
+            dbus_proxy,
+        ))
     }
 }
 
@@ -394,6 +422,7 @@ impl NotificationEmitter {
     pub fn actions(&self) -> bool {
         self.capabilities.contains(Capabilities::ACTIONS)
     }
+
     #[inline]
     /// Whether the server supports body markup
     pub fn body_markup(&self) -> bool {
@@ -405,13 +434,13 @@ impl NotificationEmitter {
         self.capabilities.contains(Capabilities::BODY)
     }
     pub async fn closed(&self) -> zbus::Result<NotificationClosedStream<'static>> {
-        self.proxy.receive_notification_closed().await
+        self.notification_proxy.receive_notification_closed().await
     }
     pub async fn invocations(&self) -> zbus::Result<ActionInvokedStream<'static>> {
-        self.proxy.receive_action_invoked().await
+        self.notification_proxy.receive_action_invoked().await
     }
     pub async fn replies(&self) -> zbus::Result<NotificationRepliedStream<'static>> {
-        self.proxy.receive_notification_replied().await
+        self.notification_proxy.receive_notification_replied().await
     }
     pub fn translate_host_id(&self, id: u32) -> Option<u32> {
         match HostId::new_less_safe(id) {
@@ -424,6 +453,9 @@ impl NotificationEmitter {
                 Some(guest) => Some(guest.into()),
             },
         }
+    }
+    pub fn clear(&self) {
+        self.maps.borrow_mut().clear()
     }
     pub fn remove_host_id(&self, id: u32) -> Option<u32> {
         match HostId::new_less_safe(id) {
@@ -586,7 +618,7 @@ impl NotificationEmitter {
             Some(i) => i.into(),
         };
         let id = HostId::new_less_safe(
-            self.proxy
+            self.notification_proxy
                 .notify(
                     application_name,
                     host_id_num,
