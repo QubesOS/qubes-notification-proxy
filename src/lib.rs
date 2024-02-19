@@ -364,6 +364,7 @@ pub enum Notification {
     V1 {
         suppress_sound: bool,
         transient: bool,
+        resident: bool,
         urgency: Option<Urgency>,
         replaces_id: u32,
         summary: String,
@@ -441,6 +442,7 @@ impl NotificationEmitter {
         Notification::V1 {
             suppress_sound,
             transient,
+            resident,
             urgency,
             replaces_id,
             summary: untrusted_summary,
@@ -516,6 +518,9 @@ impl NotificationEmitter {
                 "urgency",
                 <zbus::zvariant::Value<'_> as From<&'_ u8>>::from(urgency),
             );
+        }
+        if resident && self.capabilities.contains(Capabilities::PERSISTENCE) {
+            hints.insert("resident", Value::from(&true));
         }
         if suppress_sound && self.capabilities.contains(Capabilities::SOUND) {
             hints.insert("suppress-sound", Value::from(&true));
@@ -614,6 +619,7 @@ mod tests {
             .serialize(&Notification::V1 {
                 suppress_sound: true,
                 transient: false,
+                resident: false,
                 urgency: None,
                 replaces_id: 0,
                 summary: "".to_owned(),

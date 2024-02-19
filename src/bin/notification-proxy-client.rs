@@ -116,6 +116,7 @@ impl Server {
         let mut suppress_sound = false;
         let mut transient = false;
         let mut urgency = None;
+        let mut resident = false;
         let mut category = None;
         for (i, j) in hints.into_iter() {
             match &*i {
@@ -167,6 +168,7 @@ impl Server {
                 ),
                 "suppress-sound" => suppress_sound = true,
                 "transient" => transient = true,
+                "resident" => resident = true,
                 "x" | "y" => eprintln!("Ignoring coordinate hint {} {:?}", i, j),
                 "urgency" => match j {
                     Value::U8(0) => urgency = Some(Urgency::Low),
@@ -193,6 +195,7 @@ impl Server {
             notification: Notification::V1 {
                 suppress_sound,
                 transient,
+                resident,
                 urgency,
                 replaces_id,
                 summary,
