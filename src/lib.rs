@@ -131,7 +131,7 @@ pub const fn split_version(combined: u32) -> (u16, u16) {
     ((combined >> 16) as _, combined as _)
 }
 
-#[derive(Serialize, Deserialize, Debug, Value, Type)]
+#[derive(Serialize, Deserialize, Debug, Value, Type, Clone)]
 /// Image parameters
 pub struct ImageParameters {
     /// The width of the image.  Not trusted.
@@ -191,7 +191,7 @@ fn serialize_image(
     }
 
     // image must be at least 1x1
-    if untrusted_width < 1 || untrusted_height < 1 || untrusted_rowstride < 3 {
+    if untrusted_width < 1 || untrusted_height < 1 || untrusted_rowstride < channels {
         return Err("Too small width, height, or stride");
     }
 
@@ -729,5 +729,109 @@ mod tests {
         let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
         assert_eq!(long_sanitized.len(), cmp.len());
         assert_eq!(long_sanitized, cmp);
+    }
+
+    #[test]
+    fn test_image_validation() {
+        let image = ImageParameters {
+            untrusted_width: 1,
+            untrusted_height: 1,
+            untrusted_rowstride: 4,
+            untrusted_has_alpha: true,
+            untrusted_bits_per_sample: 8,
+            untrusted_channels: 4,
+            untrusted_data: vec![0, 0, 0, 0],
+        };
+        let v = serialize_image(image.clone()).unwrap();
+        assert_eq!(v.value_signature(), "(iiibiiay)");
+        assert_eq!(
+            v,
+            Value::from((1i32, 1i32, 4i32, true, 8, 4, vec![0u8, 0, 0, 0],))
+        );
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_width: 0,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Too small width, height, or stride"
+        );
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_height: 0,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Too small width, height, or stride"
+        );
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_rowstride: 3,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Too small width, height, or stride"
+        );
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_has_alpha: false,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Wrong number of channels"
+        );
+        serialize_image(ImageParameters {
+            untrusted_has_alpha: false,
+            untrusted_channels: 3,
+            ..image.clone()
+        })
+        .unwrap();
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_has_alpha: false,
+                untrusted_channels: 4,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Wrong number of channels"
+        );
+
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_width: MAX_WIDTH + 1,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Width or height too large"
+        );
+
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_height: MAX_HEIGHT + 1,
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Width or height too large"
+        );
+
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_rowstride: 4,
+                untrusted_width: 2,
+                untrusted_data: vec![0;8],
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Row stride too small"
+        );
+
+        assert_eq!(
+            serialize_image(ImageParameters {
+                untrusted_data: vec![0;3],
+                ..image.clone()
+            })
+            .unwrap_err(),
+            "Image too large"
+        );
     }
 }
