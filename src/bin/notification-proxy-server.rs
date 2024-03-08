@@ -113,21 +113,25 @@ but this server only supports version {MINOR_VERSION}"
     });
     eprintln!("Entering loop");
     loop {
-        let size = stdin
-            .read_u32_le()
-            .await
-            .expect("Error reading from stdin")
-            .to_le();
+        let size = match stdin.read_u32_le().await {
+            Ok(size) => size.to_le(),
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::UnexpectedEof => break,
+                e => panic!("Error reading from stdin: {}", e),
+            },
+        };
         if size > MAX_MESSAGE_SIZE {
             panic!("Message too large ({} bytes)", size)
         }
         eprintln!("{} bytes to read!", size);
         let mut bytes = vec![0; size as _];
-        let bytes_read = stdin
-            .read_exact(&mut bytes[..])
-            .await
-            .expect("error reading from stdin");
-        assert_eq!(bytes_read, size as _);
+        match stdin.read_exact(&mut bytes[..]).await {
+            Ok(bytes_read) => assert_eq!(bytes_read, size as _),
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::UnexpectedEof => break,
+                e => panic!("Error reading from stdin: {}", e),
+            },
+        };
         let message: notification_emitter::Message = options
             .deserialize(&bytes)
             .expect("malformed input from client");
@@ -147,7 +151,10 @@ but this server only supports version {MINOR_VERSION}"
                         message,
                         sequence,
                     },
-                    Err(_) => ReplyMessage::UnknownError { sequence },
+                    Err(e) => {
+                        eprintln!("Serialization failed for {:?}", e);
+                        ReplyMessage::UnknownError { sequence }
+                    }
                 })
                 .expect("Serialization failed?");
             stdout.transmit(&*data).await

@@ -57,7 +57,12 @@ fn next(t: NonZeroU32) -> NonZeroU32 {
 }
 
 impl Maps {
-    pub(super) fn next_id(&mut self, id: HostId) -> GuestId {
+    pub(super) fn next_id(&mut self, id: HostId, guest_id: Option<GuestId>) -> GuestId {
+        if let Some(guest_id) = guest_id {
+            self.guest_to_host_map.insert(guest_id.0, id.0);
+            self.host_to_guest_map.insert(id.0, guest_id.0);
+            return guest_id;
+        }
         self.last_id = next(self.last_id);
         while self.guest_to_host_map.contains_key(&self.last_id) {
             self.last_id = next(self.last_id);
@@ -92,17 +97,10 @@ impl Maps {
     }
 
     pub(super) fn remove_host_id(&mut self, id: HostId) -> Option<GuestId> {
-        let guest = self.host_to_guest_map.remove(&id.0.into());
-        match guest {
-            None => {
-                eprintln!("Trying to delete nonexistant ID {}", u32::from(id.0));
-                return None;
-            }
-            Some(g) => {
-                assert_eq!(self.guest_to_host_map.remove(&g.into()), id.0.into());
-                Some(GuestId(g))
-            }
-        }
+        self.host_to_guest_map.remove(&id.0.into()).map(|g| {
+            assert_eq!(self.guest_to_host_map.remove(&g.into()), id.0.into());
+            GuestId(g)
+        })
     }
 
     pub(super) fn clear(&mut self) {

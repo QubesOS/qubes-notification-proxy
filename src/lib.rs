@@ -461,16 +461,8 @@ impl NotificationEmitter {
         self.maps.borrow_mut().clear()
     }
     pub fn remove_host_id(&self, id: u32) -> Option<u32> {
-        match HostId::new_less_safe(id) {
-            None => Some(0),
-            Some(a) => match self.maps.borrow_mut().remove_host_id(a) {
-                None => {
-                    eprintln!("ID {} not found!", u32::from(a));
-                    None
-                }
-                Some(guest) => Some(guest.into()),
-            },
-        }
+        HostId::new_less_safe(id)
+            .and_then(|a| self.maps.borrow_mut().remove_host_id(a).map(From::from))
     }
     pub async fn send_notification(
         &self,
@@ -491,15 +483,7 @@ impl NotificationEmitter {
         let guest_id = maps::GuestId::new_less_safe(replaces_id);
         let host_id = match guest_id {
             None => None,
-            Some(id) => match self.maps.borrow().lookup_guest_id(id) {
-                None => {
-                    return Err(zbus::Error::Failure(format!(
-                        "ID {} not found in guest-to-host lookup map",
-                        u32::from(id),
-                    )))
-                }
-                Some(id) => Some(id),
-            },
+            Some(id) => self.maps.borrow().lookup_guest_id(id),
         };
         if expire_timeout < -1 {
             return Err(zbus::Error::Unsupported);
@@ -636,7 +620,7 @@ impl NotificationEmitter {
         )
         .expect("Notification daemon sent a zero ID?");
 
-        Ok(self.maps.borrow_mut().next_id(id))
+        Ok(self.maps.borrow_mut().next_id(id, guest_id))
     }
 }
 
@@ -818,7 +802,7 @@ mod tests {
             serialize_image(ImageParameters {
                 untrusted_rowstride: 4,
                 untrusted_width: 2,
-                untrusted_data: vec![0;8],
+                untrusted_data: vec![0; 8],
                 ..image.clone()
             })
             .unwrap_err(),
@@ -827,7 +811,7 @@ mod tests {
 
         assert_eq!(
             serialize_image(ImageParameters {
-                untrusted_data: vec![0;3],
+                untrusted_data: vec![0; 3],
                 ..image.clone()
             })
             .unwrap_err(),
