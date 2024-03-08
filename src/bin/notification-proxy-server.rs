@@ -123,7 +123,6 @@ but this server only supports version {MINOR_VERSION}"
         if size > MAX_MESSAGE_SIZE {
             panic!("Message too large ({} bytes)", size)
         }
-        eprintln!("{} bytes to read!", size);
         let mut bytes = vec![0; size as _];
         match stdin.read_exact(&mut bytes[..]).await {
             Ok(bytes_read) => assert_eq!(bytes_read, size as _),
