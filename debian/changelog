@@ -1,3 +1,10 @@
+notification-proxy (1.0.0-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * 
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 27 Mar 2024 21:28:42 +0100
+
 notification-proxy (0.1.0-1) unstable; urgency=medium
 
   * Initial release.
