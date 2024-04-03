@@ -5,7 +5,7 @@
 
 Name:           qubes-notification
 Version:        @VERSION@
-Release:        1
+Release:        1%{?dist}
 Summary:        Notification proxy for Qubes OS
 
 License:        GPLv2+
