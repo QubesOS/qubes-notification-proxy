@@ -6,18 +6,18 @@ vm:
   rpm:
     build:
     - rust-notification-emitter.spec
-  debian:
+  deb:
     build:
     - debian
 
 vm-bookworm:
-  debian:
+  deb:
     build: []
 
 vm-bullseye:
-  debian:
+  deb:
     build: []
 
 vm-jammy:
-  debian:
+  deb:
     build: []
