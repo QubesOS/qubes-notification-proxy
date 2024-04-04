@@ -1,3 +1,12 @@
+notification-proxy (1.0.1-1) unstable; urgency=medium
+
+  * Fix .qubesbuilder file for debian
+  * spec: add missing dist suffix
+  * ci: add config
+  * Lower required nix package version
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 04 Apr 2024 05:47:11 +0200
+
 notification-proxy (1.0.0-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
