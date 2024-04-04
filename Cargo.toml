@@ -18,7 +18,7 @@ serde = "1.0.185"
 serde_derive = "1.0.185"
 tokio = { version = "1.29.1", features = ["io-std", "rt", "macros"], default-features = false }
 zbus = { version = "3.14.1", features = ["tokio"], default-features = false }
-nix = { version = "0.26.4", features = ["user"], default-features = false }
+nix = { version = "0.26.2", features = ["user"], default-features = false }
 
 [[bin]]
 name = "notification-proxy-server"
