@@ -226,9 +226,23 @@ fn serialize_image(
     )));
 }
 
-#[link(kind = "dylib", name = "qubes-pure")]
-extern "C" {
-    fn qubes_pure_code_point_safe_for_display(code_point: u32) -> bool;
+#[cfg(feature = "unicode")]
+#[must_use]
+fn validate_code_point(code_point: u32) -> bool {
+    #[link(kind = "dylib", name = ":libqubes-pure.so.0")]
+    extern "C" {
+        fn qubes_pure_code_point_safe_for_display(code_point: u32) -> bool;
+    }
+    // SAFETY: this function is not actually unsafe
+    unsafe { qubes_pure_code_point_safe_for_display(code_point) }
+}
+#[cfg(not(feature = "unicode"))]
+#[must_use]
+fn validate_code_point(code_point: u32) -> bool {
+    match code_point {
+        0x20 ..= 0x7E => true,
+        _ => false,
+    }
 }
 
 /// This imposes the following restrictions:
@@ -245,8 +259,7 @@ pub fn sanitize_str(arg: &str) -> String {
     let mut lines = 0;
     while let Some(c) = iter.next() {
         res.push(
-            // SAFETY: this function is not actually unsafe
-            if unsafe { qubes_pure_code_point_safe_for_display(c.into()) } || c == '\t' {
+            if validate_code_point(c.into()) || c == '\t' {
                 counter += 1;
                 c
             } else if c == '\n' {
