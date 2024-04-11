@@ -25,3 +25,7 @@ name = "notification-proxy-server"
 
 [[bin]]
 name = "notification-proxy-client"
+
+[features]
+unicode = []
+default = ["unicode"]
