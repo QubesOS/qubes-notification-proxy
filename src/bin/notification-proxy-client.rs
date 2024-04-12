@@ -156,20 +156,20 @@ impl Server {
                     })
                 }
                 "sound-file" => {
-                    eprintln!("Not yet implemented: Sound files (got {j})")
+                    eprintln!("Not yet implemented: Sound files (got {j:?})")
                 }
                 "sound-name" => {
-                    eprintln!("Not yet implemented: Sound files specified by name (got {j})")
+                    eprintln!("Not yet implemented: Sound files specified by name (got {j:?})")
                 }
                 "suppress-sound" => suppress_sound = true,
                 "transient" => transient = true,
                 "resident" => resident = true,
-                "x" | "y" => eprintln!("Ignoring coordinate hint {i} {j}"),
+                "x" | "y" => eprintln!("Ignoring coordinate hint {i} {j:?}"),
                 "urgency" => match j {
                     Value::U8(0) => urgency = Some(Urgency::Low),
                     Value::U8(1) => urgency = Some(Urgency::Normal),
                     Value::U8(2) => urgency = Some(Urgency::Critical),
-                    _ => eprintln!("Ignoring unknown urgency value {j}"),
+                    _ => eprintln!("Ignoring unknown urgency value {j:?}"),
                 },
                 _ => {
                     eprintln!("Unknown hint {i}, ignoring");
