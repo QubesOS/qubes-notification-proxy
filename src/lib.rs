@@ -242,7 +242,7 @@ extern "C" {
 /// - Text is truncated after 500 lines.
 ///
 /// Too many lines in particular is known to make xfce4-notifyd spin and consume 100% CPU.
-pub fn sanitize_str(arg: String) -> String {
+pub fn sanitize_string(arg: String) -> String {
     let mut res = String::with_capacity(arg.len());
     let mut iter = arg.chars().peekable();
     let mut counter = 0;
@@ -521,7 +521,7 @@ impl NotificationEmitter {
                     // Sanitized by is_valid_action_name()
                     actions.push(s)
                 } else {
-                    actions.push(sanitize_str(s))
+                    actions.push(sanitize_string(s))
                 }
             }
             actions
@@ -586,7 +586,7 @@ impl NotificationEmitter {
         }
         let mut escaped_body;
         if self.body_markup() {
-            let body = sanitize_str(untrusted_body);
+            let body = sanitize_string(untrusted_body);
             // Body markup must be escaped.  FIXME: validate it instead.
             escaped_body = String::with_capacity(body.as_bytes().len());
             // this is slow and can easily be made much faster with
@@ -604,7 +604,7 @@ impl NotificationEmitter {
                 }
             }
         } else {
-            escaped_body = sanitize_str(untrusted_body)
+            escaped_body = sanitize_string(untrusted_body)
         }
         let host_id_num = match host_id {
             None => 0,
@@ -616,7 +616,7 @@ impl NotificationEmitter {
                     application_name,
                     host_id_num,
                     icon,
-                    &*(self.prefix.clone() + &*sanitize_str(untrusted_summary)),
+                    &*(self.prefix.clone() + &*sanitize_string(untrusted_summary)),
                     &*escaped_body,
                     &*actions,
                     &hints,
@@ -684,12 +684,12 @@ mod tests {
         // The underlying C library has extensive tests,
         // including a test that it is memory safe on all possible
         // inputs.  Only do minimal tests here.
-        assert_eq!(sanitize_str("&".to_string()), "&".to_string());
-        assert_eq!(sanitize_str("\n".to_string()), "\n".to_string());
-        assert_eq!(sanitize_str("\t".to_string()), "\t".to_string());
+        assert_eq!(sanitize_string("&".to_string()), "&".to_string());
+        assert_eq!(sanitize_string("\n".to_string()), "\n".to_string());
+        assert_eq!(sanitize_string("\t".to_string()), "\t".to_string());
         // \x15 isn't safe
         assert_eq!(
-            sanitize_str("a\x15\n".to_string()),
+            sanitize_string("a\x15\n".to_string()),
             "a\u{FFFD}\n".to_string()
         );
     }
@@ -698,12 +698,12 @@ mod tests {
     fn test_too_many_lines() {
         let max_lines = str::repeat("a\n", 500);
         assert_eq!(
-            &sanitize_str(max_lines.clone()),
+            &sanitize_string(max_lines.clone()),
             &max_lines,
             "500 lines are fine"
         );
         assert_eq!(
-            sanitize_str(max_lines.clone() + &"a\n"[..]),
+            sanitize_string(max_lines.clone() + &"a\n"[..]),
             max_lines,
             "501 lines are not"
         );
@@ -712,7 +712,7 @@ mod tests {
     #[test]
     fn test_too_long_lines() {
         let really_really_long = str::repeat("a", MAX_LINES * MAX_CHARS_PER_LINE);
-        let long_sanitized = sanitize_str(really_really_long);
+        let long_sanitized = sanitize_string(really_really_long);
         assert_eq!(long_sanitized.len(), (MAX_CHARS_PER_LINE + 1) * MAX_LINES);
         let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
         assert_eq!(long_sanitized.len(), cmp.len());
@@ -722,7 +722,7 @@ mod tests {
     #[test]
     fn test_gigunda() {
         let really_really_long = str::repeat("a", MAX_LINES * 2 * MAX_CHARS_PER_LINE);
-        let long_sanitized = sanitize_str(really_really_long);
+        let long_sanitized = sanitize_string(really_really_long);
         assert_eq!(long_sanitized.len(), (MAX_CHARS_PER_LINE + 1) * MAX_LINES);
         let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
         assert_eq!(long_sanitized.len(), cmp.len());
