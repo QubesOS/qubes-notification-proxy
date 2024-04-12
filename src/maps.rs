@@ -1,4 +1,5 @@
 use core::num::NonZeroU32;
+use std::collections::BTreeMap;
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
@@ -32,8 +33,8 @@ impl From<HostId> for u32 {
 }
 
 pub(super) struct Maps {
-    guest_to_host_map: std::collections::BTreeMap<NonZeroU32, NonZeroU32>,
-    host_to_guest_map: std::collections::BTreeMap<NonZeroU32, NonZeroU32>,
+    guest_to_host_map: BTreeMap<NonZeroU32, NonZeroU32>,
+    host_to_guest_map: BTreeMap<NonZeroU32, NonZeroU32>,
     last_id: NonZeroU32,
 }
 
@@ -68,7 +69,7 @@ impl Maps {
             self.last_id = next(self.last_id);
         }
         let last_id = self.last_id;
-        eprintln!("Next ID is {}, mapping to host ID {}", last_id, id.0);
+        eprintln!("Next ID is {last_id}, mapping to host ID {}", id.0);
         assert!(self
             .guest_to_host_map
             .insert(last_id, id.0.into())

@@ -14,6 +14,10 @@ use zbus::{
 };
 mod maps;
 use maps::{GuestId, HostId, Maps};
+
+pub const DBUS_INTERFACE_NAME: &str = "org.freedesktop.Notifications";
+pub const DBUS_INTERFACE_PATH: &str = "/org/freedesktop/Notifications";
+
 #[dbus_proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
@@ -238,7 +242,7 @@ extern "C" {
 /// - Text is truncated after 500 lines.
 ///
 /// Too many lines in particular is known to make xfce4-notifyd spin and consume 100% CPU.
-pub fn sanitize_str(arg: &str) -> String {
+pub fn sanitize_str(arg: String) -> String {
     let mut res = String::with_capacity(arg.len());
     let mut iter = arg.chars().peekable();
     let mut counter = 0;
@@ -315,7 +319,7 @@ impl NotificationEmitter {
         let (dbus_proxy, notification_proxy) = futures_util::future::join(
             DBusProxy::new(&connection).and_then(move |proxy| async move {
                 proxy
-                    .receive_name_owner_changed_with_args(&[(0, &*"org.freedesktop.Notifications")])
+                    .receive_name_owner_changed_with_args(&[(0, DBUS_INTERFACE_NAME)])
                     .await
             }),
             NotificationsProxy::new(&connection).and_then(move |proxy| async move {
@@ -327,8 +331,10 @@ impl NotificationEmitter {
         let (dbus_proxy, (notification_proxy, capabilities_list)) =
             (dbus_proxy?, notification_proxy?);
         let mut capabilities = Capabilities::default();
-        for capability_str in capabilities_list.into_iter() {
-            match &*capability_str {
+
+        capabilities_list
+            .into_iter()
+            .for_each(|capability_str| match capability_str.as_str() {
                 "action-icons" => capabilities |= Capabilities::ACTION_ICONS,
                 "persistence" => capabilities |= Capabilities::PERSISTENCE,
                 "body-markup" => capabilities |= Capabilities::BODY_MARKUP,
@@ -341,8 +347,8 @@ impl NotificationEmitter {
                 "icon-multi" => capabilities |= Capabilities::ICON_MULTI,
                 "inline-reply" => capabilities |= Capabilities::INLINE_REPLY,
                 _ => eprintln!("Unknown capability {} detected", capability_str),
-            }
-        }
+            });
+
         eprintln!(
             "Server capabilities: body markup {}, persistence {}",
             capabilities.contains(Capabilities::BODY_MARKUP),
@@ -369,7 +375,7 @@ impl MessageWriter {
     pub fn new() -> Self {
         Self(Rc::new(Mutex::new(tokio::io::stdout())))
     }
-    pub async fn transmit(&self, data: &[u8]) {
+    pub async fn transmit(&self, data: Vec<u8>) {
         let len: u32 = data.len().try_into().unwrap();
         let mut guard = self.0.lock().await;
         guard
@@ -377,7 +383,7 @@ impl MessageWriter {
             .await
             .expect("error writing to stdout");
         guard
-            .write_all(&*data)
+            .write_all(data.as_slice())
             .await
             .expect("error writing to stdout");
         guard.flush().await.expect("error writing to stdout");
@@ -507,15 +513,15 @@ impl NotificationEmitter {
         let icon = "";
         let actions = if self.actions() {
             let mut actions = Vec::with_capacity(untrusted_actions.len());
-            for (count, s) in untrusted_actions.iter().enumerate() {
+            for (count, s) in untrusted_actions.into_iter().enumerate() {
                 if count & 1 == 0 {
                     if !is_valid_action_name(s.as_bytes()) {
                         return Err(zbus::Error::Failure("Invalid action name".to_owned()));
                     }
                     // Sanitized by is_valid_action_name()
-                    actions.push(s.to_owned())
+                    actions.push(s)
                 } else {
-                    actions.push(sanitize_str(&*s))
+                    actions.push(sanitize_str(s))
                 }
             }
             actions
@@ -580,7 +586,7 @@ impl NotificationEmitter {
         }
         let mut escaped_body;
         if self.body_markup() {
-            let body = sanitize_str(&*untrusted_body);
+            let body = sanitize_str(untrusted_body);
             // Body markup must be escaped.  FIXME: validate it instead.
             escaped_body = String::with_capacity(body.as_bytes().len());
             // this is slow and can easily be made much faster with
@@ -598,7 +604,7 @@ impl NotificationEmitter {
                 }
             }
         } else {
-            escaped_body = sanitize_str(&*untrusted_body)
+            escaped_body = sanitize_str(untrusted_body)
         }
         let host_id_num = match host_id {
             None => 0,
@@ -610,7 +616,7 @@ impl NotificationEmitter {
                     application_name,
                     host_id_num,
                     icon,
-                    &*(self.prefix.clone() + &*sanitize_str(&*untrusted_summary)),
+                    &*(self.prefix.clone() + &*sanitize_str(untrusted_summary)),
                     &*escaped_body,
                     &*actions,
                     &hints,
@@ -678,27 +684,35 @@ mod tests {
         // The underlying C library has extensive tests,
         // including a test that it is memory safe on all possible
         // inputs.  Only do minimal tests here.
-        assert_eq!(sanitize_str("&"), "&".to_owned());
-        assert_eq!(sanitize_str("\n"), "\n".to_owned());
-        assert_eq!(sanitize_str("\t"), "\t".to_owned());
+        assert_eq!(sanitize_str("&".to_string()), "&".to_string());
+        assert_eq!(sanitize_str("\n".to_string()), "\n".to_string());
+        assert_eq!(sanitize_str("\t".to_string()), "\t".to_string());
         // \x15 isn't safe
-        assert_eq!(sanitize_str("a\x15\n"), "a\u{FFFD}\n".to_owned());
+        assert_eq!(
+            sanitize_str("a\x15\n".to_string()),
+            "a\u{FFFD}\n".to_string()
+        );
     }
 
     #[test]
     fn test_too_many_lines() {
         let max_lines = str::repeat("a\n", 500);
-        assert_eq!(&sanitize_str(&*max_lines), &max_lines, "500 lines are fine");
         assert_eq!(
-            sanitize_str(&*(max_lines.clone() + &"a\n"[..])),
+            &sanitize_str(max_lines.clone()),
+            &max_lines,
+            "500 lines are fine"
+        );
+        assert_eq!(
+            sanitize_str(max_lines.clone() + &"a\n"[..]),
             max_lines,
             "501 lines are not"
         );
     }
+
     #[test]
     fn test_too_long_lines() {
         let really_really_long = str::repeat("a", MAX_LINES * MAX_CHARS_PER_LINE);
-        let long_sanitized = sanitize_str(&*really_really_long);
+        let long_sanitized = sanitize_str(really_really_long);
         assert_eq!(long_sanitized.len(), (MAX_CHARS_PER_LINE + 1) * MAX_LINES);
         let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
         assert_eq!(long_sanitized.len(), cmp.len());
@@ -708,7 +722,7 @@ mod tests {
     #[test]
     fn test_gigunda() {
         let really_really_long = str::repeat("a", MAX_LINES * 2 * MAX_CHARS_PER_LINE);
-        let long_sanitized = sanitize_str(&*really_really_long);
+        let long_sanitized = sanitize_str(really_really_long);
         assert_eq!(long_sanitized.len(), (MAX_CHARS_PER_LINE + 1) * MAX_LINES);
         let cmp = vec![str::repeat("a", MAX_CHARS_PER_LINE); MAX_LINES].join("\n") + "\n";
         assert_eq!(long_sanitized.len(), cmp.len());

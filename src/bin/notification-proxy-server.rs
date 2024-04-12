@@ -1,6 +1,6 @@
 use bincode::Options;
 use futures_util::StreamExt;
-use notification_emitter::{merge_versions, NotificationEmitter};
+use notification_emitter::{merge_versions, NotificationEmitter, DBUS_INTERFACE_NAME};
 use notification_emitter::{
     MessageWriter, ReplyMessage, MAJOR_VERSION, MAX_MESSAGE_SIZE, MINOR_VERSION,
 };
@@ -8,12 +8,10 @@ use std::rc::Rc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 async fn client_server(qube_name: String) {
-    let (emitter, mut server_name_owner_changed) = NotificationEmitter::new(
-        qube_name.to_owned() + ": ",
-        "Qubes VM ".to_owned() + &*qube_name,
-    )
-    .await
-    .expect("Cannot connect to notifcation daemon");
+    let (emitter, mut server_name_owner_changed) =
+        NotificationEmitter::new(format!("{qube_name}: "), format!("Qubes VM {qube_name}"))
+            .await
+            .expect("Cannot connect to notifcation daemon");
     let (closed_stream, invoked_stream) =
         futures_util::future::join(emitter.closed(), emitter.invocations()).await;
     let emitter = Rc::new(emitter);
@@ -58,7 +56,7 @@ but this server only supports version {MINOR_VERSION}"
                 .args()
                 .expect("Got invalid NameOwnerChanged message from bus daemon");
             assert_eq!(
-                item.name, "org.freedesktop.Notifications",
+                item.name, DBUS_INTERFACE_NAME,
                 "Bus daemon sent message for name we didn't register for"
             );
             emitter_.clear()
@@ -70,7 +68,7 @@ but this server only supports version {MINOR_VERSION}"
             let item = match item.args() {
                 Ok(item) => item,
                 Err(e) => {
-                    eprintln!("Got invalid message from notification daemon: {}", e);
+                    eprintln!("Got invalid message from notification daemon: {e}");
                     continue;
                 }
             };
@@ -84,7 +82,7 @@ but this server only supports version {MINOR_VERSION}"
                     reason: item.reason,
                 })
                 .expect("Serialization failed?");
-            stdout_.transmit(&*data).await
+            stdout_.transmit(data).await
         }
     });
     let stdout_ = stdout.clone();
@@ -94,7 +92,7 @@ but this server only supports version {MINOR_VERSION}"
             let item = match item.args() {
                 Ok(item) => item,
                 Err(e) => {
-                    eprintln!("Got invalid message from notification daemon: {}", e);
+                    eprintln!("Got invalid message from notification daemon: {e}");
                     continue;
                 }
             };
@@ -108,7 +106,7 @@ but this server only supports version {MINOR_VERSION}"
                     action: item.action_key,
                 })
                 .expect("Serialization failed?");
-            stdout_.transmit(&*data).await
+            stdout_.transmit(data).await
         }
     });
     eprintln!("Entering loop");
@@ -117,18 +115,18 @@ but this server only supports version {MINOR_VERSION}"
             Ok(size) => size.to_le(),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::UnexpectedEof => break,
-                e => panic!("Error reading from stdin: {}", e),
+                e => panic!("Error reading from stdin: {e}"),
             },
         };
         if size > MAX_MESSAGE_SIZE {
-            panic!("Message too large ({} bytes)", size)
+            panic!("Message too large ({size} bytes)")
         }
         let mut bytes = vec![0; size as _];
         match stdin.read_exact(&mut bytes[..]).await {
             Ok(bytes_read) => assert_eq!(bytes_read, size as _),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::UnexpectedEof => break,
-                e => panic!("Error reading from stdin: {}", e),
+                e => panic!("Error reading from stdin: {e}"),
             },
         };
         let message: notification_emitter::Message = options
@@ -151,12 +149,12 @@ but this server only supports version {MINOR_VERSION}"
                         sequence,
                     },
                     Err(e) => {
-                        eprintln!("Serialization failed for {:?}", e);
+                        eprintln!("Serialization failed for {e:?}");
                         ReplyMessage::UnknownError { sequence }
                     }
                 })
                 .expect("Serialization failed?");
-            stdout.transmit(&*data).await
+            stdout.transmit(data).await
         });
     }
 }

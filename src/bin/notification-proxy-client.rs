@@ -1,6 +1,8 @@
 use bincode::Options;
 use futures_channel::oneshot::Sender;
-use notification_emitter::{ImageParameters, ReplyMessage, MAX_MESSAGE_SIZE};
+use notification_emitter::{
+    ImageParameters, ReplyMessage, DBUS_INTERFACE_NAME, DBUS_INTERFACE_PATH, MAX_MESSAGE_SIZE,
+};
 use notification_emitter::{Message, Notification, Urgency, MAJOR_VERSION, MINOR_VERSION};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -43,26 +45,19 @@ fn is_valid_action_name(action: &[u8]) -> zbus::fdo::Result<()> {
         log_return!("Empty action name refused, please report this!");
     }
     if action.len() > 255 {
-        log_return!(
-            "Action {:?} has a length greater than 255 bytes.  Please report this.",
-            action
-        )
+        log_return!("Action {action:?} has a length greater than 255 bytes.  Please report this.",)
     }
     match action[0] {
         b'a'..=b'z' | b'A'..=b'Z' => {}
         _ => log_return!(
-            "Action {:?} does not start with an ASCII letter.  Please report this.",
-            action
+            "Action {action:?} does not start with an ASCII letter.  Please report this.",
         ),
     }
     for (count, i) in action[1..].iter().enumerate() {
         match i {
             b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' => {}
             _ => log_return!(
-                "Action {:?} has a forbidden byte {:?} at position {}.  Please report this.",
-                action,
-                i,
-                count,
+                "Action {action:?} has a forbidden byte {i:?} at position {count}.  Please report this."
             ),
         }
     }
@@ -118,8 +113,9 @@ impl Server {
         let mut urgency = None;
         let mut resident = false;
         let mut category = None;
+
         for (i, j) in hints.into_iter() {
-            match &*i {
+            match i.as_str() {
                 "action-icons" => {}
                 "category" => {
                     category = Some(
@@ -160,24 +156,23 @@ impl Server {
                     })
                 }
                 "sound-file" => {
-                    eprintln!("Not yet implemented: Sound files (got {:?})", j)
+                    eprintln!("Not yet implemented: Sound files (got {j})")
                 }
-                "sound-name" => eprintln!(
-                    "Not yet implemented: Sound files specified by name (got {:?})",
-                    j
-                ),
+                "sound-name" => {
+                    eprintln!("Not yet implemented: Sound files specified by name (got {j})")
+                }
                 "suppress-sound" => suppress_sound = true,
                 "transient" => transient = true,
                 "resident" => resident = true,
-                "x" | "y" => eprintln!("Ignoring coordinate hint {} {:?}", i, j),
+                "x" | "y" => eprintln!("Ignoring coordinate hint {i} {j}"),
                 "urgency" => match j {
                     Value::U8(0) => urgency = Some(Urgency::Low),
                     Value::U8(1) => urgency = Some(Urgency::Normal),
                     Value::U8(2) => urgency = Some(Urgency::Critical),
-                    _ => eprintln!("Ignoring unknown urgency value {:?}", j),
+                    _ => eprintln!("Ignoring unknown urgency value {j}"),
                 },
                 _ => {
-                    eprintln!("Unknown hint {:?}, ignoring", &*i);
+                    eprintln!("Unknown hint {i}, ignoring");
                 }
             }
         }
@@ -220,7 +215,7 @@ impl Server {
             .expect("error writing to stdout");
         guard
             .out
-            .write_all(&*data)
+            .write_all(data.as_slice())
             .await
             .expect("error writing to stdout");
         guard.out.flush().await.expect("Error writing to stdout");
@@ -255,8 +250,7 @@ async fn client_server() {
     out.flush().await.expect("flush failed");
     if daemon_major_version != MAJOR_VERSION {
         panic!(
-            "Major version mismatch: Daemon supports {} but this client supports {}",
-            daemon_major_version, MAJOR_VERSION
+            "Major version mismatch: Daemon supports {daemon_major_version} but this client supports {MAJOR_VERSION}"
         );
     }
     'outer: loop {
@@ -267,19 +261,16 @@ async fn client_server() {
 
         let connection = zbus::ConnectionBuilder::session()
             .expect("cannot create session bus")
-            .name("org.freedesktop.Notifications")
+            .name(DBUS_INTERFACE_NAME)
             .expect("cannot acquire name")
-            .serve_at(
-                "/org/freedesktop/Notifications",
-                Server(server.clone(), 0u64.into()),
-            )
+            .serve_at(DBUS_INTERFACE_PATH, Server(server.clone(), 0u64.into()))
             .expect("cannot serve")
             .build()
             .await
             .expect("error");
         let interface_ref = connection
             .object_server()
-            .interface::<_, Server>("/org/freedesktop/Notifications")
+            .interface::<_, Server>(DBUS_INTERFACE_PATH)
             .await
             .expect("something went wrong");
         loop {
@@ -289,7 +280,7 @@ async fn client_server() {
                 .expect("Error reading from stdin")
                 .to_le();
             if size > MAX_MESSAGE_SIZE {
-                panic!("Message too large ({} bytes)", size)
+                panic!("Message too large ({size} bytes)")
             }
 
             let mut bytes = vec![0; size as _];
@@ -298,7 +289,7 @@ async fn client_server() {
                 .await
                 .expect("error reading from stdin");
             assert_eq!(bytes_read, size as _);
-            eprintln!("{} bytes read!", bytes_read);
+            eprintln!("{bytes_read} bytes read!");
 
             let options = bincode::DefaultOptions::new()
                 .with_fixint_encoding()
