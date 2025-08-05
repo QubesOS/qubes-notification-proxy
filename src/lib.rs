@@ -2,6 +2,11 @@ use bitflags::bitflags;
 use futures_util::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::Shutdown;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::process::Command;
 use std::rc::Rc;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::Mutex;
@@ -226,6 +231,46 @@ fn serialize_image(
     )));
 }
 
+fn qubesd_client(method: String, dest: String) -> Result<Vec<u8>, std::io::Error> {
+    if Path::new("/usr/bin/qrexec-client-vm").exists() {
+        let output = Command::new("/usr/bin/qrexec-client-vm")
+            .arg(dest)
+            .arg(method)
+            .output()
+            .expect("failed to execute qrexec-client-vm");
+        if output.status.success() {
+            return Ok(output.stdout);
+        } else {
+            return Err(std::io::Error::other(format!(
+                "Admin API call failed: exit code {}",
+                output.status.code().unwrap()
+            )));
+        }
+    } else {
+        let mut qubesd = UnixStream::connect("/run/qubesd.sock")?;
+        qubesd.write_all(format!("{method} dom0 name {dest}\0").as_bytes())?;
+        qubesd.shutdown(Shutdown::Write)?;
+        let mut response = Vec::<u8>::new();
+        qubesd.read_to_end(&mut response)?;
+        return Ok(response);
+    }
+}
+
+pub fn qube_icon(name: String) -> Result<String, std::io::Error> {
+    let qubesd_answer = qubesd_client("admin.vm.property.Get+icon".to_string(), name)?;
+    return match qubesd_answer[0..2] {
+        [b'0', 0] => Ok(String::from_utf8(qubesd_answer[2..].to_vec())
+            .expect("Invalid UTF-8 in label name")
+            .split(' ') // skip default=... type=...
+            .last()
+            .unwrap()
+            .to_string()),
+        _ => Err(std::io::Error::other(format!(
+            "Admin API call failed: {qubesd_answer:?}"
+        ))),
+    };
+}
+
 #[link(kind = "dylib", name = "qubes-pure")]
 extern "C" {
     fn qubes_pure_code_point_safe_for_display(code_point: u32) -> bool;
@@ -300,6 +345,7 @@ pub struct NotificationEmitter {
     capabilities: Capabilities,
     prefix: String,
     application_name: String,
+    default_icon: String,
     maps: std::cell::RefCell<Maps>,
 }
 
@@ -310,6 +356,7 @@ impl NotificationEmitter {
     pub async fn new(
         prefix: String,
         application_name: String,
+        default_icon: String,
     ) -> zbus::Result<(Self, NameOwnerChangedStream<'static>)> {
         let connection = Connection::session().await?;
         let (dbus_proxy, notification_proxy) = futures_util::future::join(
@@ -355,6 +402,7 @@ impl NotificationEmitter {
                 capabilities,
                 prefix,
                 application_name,
+                default_icon,
                 maps: Default::default(),
             },
             dbus_proxy,
@@ -503,8 +551,8 @@ impl NotificationEmitter {
         // Ideally the icon would be associated with the calling application,
         // with an image suitably processed by Qubes OS to indicate trust.
         // However, there is no good way to do that in practice, so just pass
-        // an empty string to indicate "no icon".
-        let icon = "";
+        // the qube icon.
+        let icon = self.default_icon.clone();
         let actions = if self.actions() {
             let mut actions = Vec::with_capacity(untrusted_actions.len());
             for (count, s) in untrusted_actions.iter().enumerate() {
@@ -609,7 +657,7 @@ impl NotificationEmitter {
                 .notify(
                     application_name,
                     host_id_num,
-                    icon,
+                    &icon,
                     &*(self.prefix.clone() + &*sanitize_str(&*untrusted_summary)),
                     &*escaped_body,
                     &*actions,

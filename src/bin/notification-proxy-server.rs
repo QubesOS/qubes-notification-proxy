@@ -2,15 +2,23 @@ use bincode::Options;
 use futures_util::StreamExt;
 use notification_emitter::{merge_versions, NotificationEmitter};
 use notification_emitter::{
-    MessageWriter, ReplyMessage, MAJOR_VERSION, MAX_MESSAGE_SIZE, MINOR_VERSION,
+    qube_icon, MessageWriter, ReplyMessage, MAJOR_VERSION, MAX_MESSAGE_SIZE, MINOR_VERSION,
 };
 use std::rc::Rc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 async fn client_server(qube_name: String) {
+    let default_icon = match qube_icon(qube_name.to_owned()) {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("Failed to get qube {qube_name} icon: {e}");
+            "".to_string()
+        }
+    };
     let (emitter, mut server_name_owner_changed) = NotificationEmitter::new(
         qube_name.to_owned() + ": ",
         "Qubes VM ".to_owned() + &*qube_name,
+        default_icon,
     )
     .await
     .expect("Cannot connect to notifcation daemon");
