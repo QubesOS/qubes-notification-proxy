@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use zbus::zvariant::{DeserializeDict, SerializeDict, Type, Value};
+use zbus::object_server::SignalEmitter;
 
 #[derive(Debug)]
 struct ServerInner {
@@ -69,22 +70,22 @@ fn is_valid_action_name(action: &[u8]) -> zbus::fdo::Result<()> {
     return Ok(());
 }
 
-#[zbus::dbus_interface(name = "org.freedesktop.Notifications")]
+#[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Server {
     async fn get_capabilities(&self) -> zbus::fdo::Result<(Vec<String>,)> {
         Ok((vec!["persistence".to_owned(), "actions".to_owned()],))
     }
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     async fn notification_closed(
         &self,
-        signal_context: &zbus::SignalContext<'_>,
+        _signal_emitter: &SignalEmitter<'_>,
         id: u32,
         reason: u32,
     ) -> zbus::Result<()>;
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     async fn action_invoked(
         &self,
-        signal_context: &zbus::SignalContext<'_>,
+        _signal_emitter: &SignalEmitter<'_>,
         id: u32,
         action_key: String,
     ) -> zbus::Result<()>;
@@ -265,7 +266,7 @@ async fn client_server() {
             map: HashMap::new(),
         }));
 
-        let connection = zbus::ConnectionBuilder::session()
+        let connection = zbus::connection::Builder::session()
             .expect("cannot create session bus")
             .name("org.freedesktop.Notifications")
             .expect("cannot acquire name")
@@ -330,13 +331,13 @@ async fn client_server() {
                     .expect("task died"),
                 ReplyMessage::Dismissed { id, reason } => {
                     let x = interface_ref.get().await;
-                    x.notification_closed(interface_ref.signal_context(), id, reason)
+                    x.notification_closed(interface_ref.signal_emitter(), id, reason)
                         .await
                         .expect("cannot emit signal");
                 }
                 ReplyMessage::ActionInvoked { id, action } => {
                     let x = interface_ref.get().await;
-                    x.action_invoked(interface_ref.signal_context(), id, action)
+                    x.action_invoked(interface_ref.signal_emitter(), id, action)
                         .await
                         .expect("cannot emit signal");
                 }

@@ -11,7 +11,7 @@ use std::rc::Rc;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::Mutex;
 use zbus::{
-    dbus_proxy,
+    proxy,
     fdo::{DBusProxy, NameOwnerChangedStream},
     zvariant::Type,
     zvariant::Value,
@@ -19,7 +19,7 @@ use zbus::{
 };
 mod maps;
 use maps::{GuestId, HostId, Maps};
-#[dbus_proxy(
+#[proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
     default_path = "/org/freedesktop/Notifications"
@@ -39,12 +39,12 @@ pub trait Notifications {
     ) -> zbus::Result<u32>;
     fn close_notification(&self, id: u32) -> zbus::Result<()>;
     fn get_server_information(&self) -> zbus::Result<(String, String, String, String)>;
-    #[dbus_proxy(signal)]
+    #[zbus(signal)]
     fn notification_closed(&self, id: u32, reason: u32) -> Result<()>;
-    #[dbus_proxy(signal)]
+    #[zbus(signal)]
     fn action_invoked(&self, id: u32, action_key: String) -> Result<()>;
     // Non-standard KDE extension
-    #[dbus_proxy(signal)]
+    #[zbus(signal)]
     fn notification_replied(&self, id: u32, text: String) -> Result<()>;
 }
 
@@ -370,9 +370,9 @@ impl NotificationEmitter {
         prefix: String,
         application_name: String,
         default_icon: String,
-    ) -> zbus::Result<(Self, NameOwnerChangedStream<'static>)> {
+    ) -> zbus::Result<(Self, NameOwnerChangedStream)> {
         let connection = Connection::session().await?;
-        let (dbus_proxy, notification_proxy) = futures_util::future::join(
+        let (proxy, notification_proxy) = futures_util::future::join(
             DBusProxy::new(&connection).and_then(move |proxy| async move {
                 proxy
                     .receive_name_owner_changed_with_args(&[(0, &*"org.freedesktop.Notifications")])
@@ -384,8 +384,8 @@ impl NotificationEmitter {
             }),
         )
         .await;
-        let (dbus_proxy, (notification_proxy, capabilities_list)) =
-            (dbus_proxy?, notification_proxy?);
+        let (proxy, (notification_proxy, capabilities_list)) =
+            (proxy?, notification_proxy?);
         let mut capabilities = Capabilities::default();
         for capability_str in capabilities_list.into_iter() {
             match &*capability_str {
@@ -418,7 +418,7 @@ impl NotificationEmitter {
                 default_icon,
                 maps: Default::default(),
             },
-            dbus_proxy,
+            proxy,
         ))
     }
 }
@@ -497,13 +497,13 @@ impl NotificationEmitter {
     pub fn body(&self) -> bool {
         self.capabilities.contains(Capabilities::BODY)
     }
-    pub async fn closed(&self) -> zbus::Result<NotificationClosedStream<'static>> {
+    pub async fn closed(&self) -> zbus::Result<NotificationClosedStream> {
         self.notification_proxy.receive_notification_closed().await
     }
-    pub async fn invocations(&self) -> zbus::Result<ActionInvokedStream<'static>> {
+    pub async fn invocations(&self) -> zbus::Result<ActionInvokedStream> {
         self.notification_proxy.receive_action_invoked().await
     }
-    pub async fn replies(&self) -> zbus::Result<NotificationRepliedStream<'static>> {
+    pub async fn replies(&self) -> zbus::Result<NotificationRepliedStream> {
         self.notification_proxy.receive_notification_replied().await
     }
     pub fn translate_host_id(&self, id: u32) -> Option<u32> {
