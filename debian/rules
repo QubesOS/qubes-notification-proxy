@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 include /usr/share/dpkg/architecture.mk
 
-DESTDIR=debian/notification-proxy
+export DESTDIR=debian/tmp
 SYSTEMDUSERDIR=/usr/lib/systemd/user
 
 %:
@@ -12,6 +12,13 @@ override_dh_auto_test:
 
 override_dh_auto_install:
 	dh_auto_install --destdir=$(DESTDIR) -O--buildsystem=cargo
+	mv "$(DESTDIR)/usr/bin/notification-proxy-client" \
+	   "$(DESTDIR)/usr/bin/qubes-notification-proxy-client"
+	mv "$(DESTDIR)/usr/bin/notification-proxy-server" \
+	   "$(DESTDIR)/usr/bin/qubes-notification-proxy-server"
+	# dh-cargo defines substvars only to one subpackage, fix it
+	cp debian/qubes-notification-daemon.substvars \
+		debian/qubes-notification-agent.substvars
 	install -d -- "$(DESTDIR)/etc/qubes-rpc/" "$(DESTDIR)$(SYSTEMDUSERDIR)" "$(DESTDIR)$(SYSTEMDUSERDIR)-preset"
 	install -m0644 -- src/qubes-notification-agent.service "$(DESTDIR)$(SYSTEMDUSERDIR)"
 	install -m0644 -- src/90-qubes-notification-agent.preset "$(DESTDIR)$(SYSTEMDUSERDIR)-preset"

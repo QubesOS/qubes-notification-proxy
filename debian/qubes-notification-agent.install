@@ -1,0 +1,3 @@
+/usr/bin/qubes-notification-proxy-client
+/usr/lib/systemd/user/qubes-notification-agent.service
+/usr/lib/systemd/user-preset/90-qubes-notification-agent.preset

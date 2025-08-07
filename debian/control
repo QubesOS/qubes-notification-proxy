@@ -1,4 +1,4 @@
-Source: notification-proxy
+Source: qubes-notification
 Section: admin
 Priority: optional
 Maintainer: Demi Marie Obenour <demi@invisiblethingslab.com>
@@ -15,14 +15,14 @@ Build-Depends: debhelper (>= 12),
  librust-serde-dev (>= 1.0.185),
  librust-serde-derive-dev (>= 1.0.185),
  librust-tokio-dev (>= 1.29.1),
- librust-zbus-dev (>= 3.14.1),
+ librust-zbus-dev (>= 5.0.0),
  libqubes-pure-dev,
 Standards-Version: 4.6.1
 Vcs-Git: https://github.com/QubesOS/qubes-notification-proxy.git
 Vcs-Browser: https://github.com/QubesOS/qubes-notification-proxy
 Rules-Requires-Root: no
 
-Package: notification-proxy
+Package: qubes-notification-agent
 Architecture: any
 Multi-Arch: allowed
 Section: admin
@@ -37,4 +37,21 @@ Suggests:
 Provides:
  ${cargo:Provides},
 Built-Using: ${cargo:Built-Using}
-Description: Notification proxy for Qubes OS
+Description: Notification proxy for Qubes OS - agent
+
+Package: qubes-notification-daemon
+Architecture: any
+Multi-Arch: allowed
+Section: admin
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ ${cargo:Depends},
+Recommends:
+ ${cargo:Recommends},
+Suggests:
+ ${cargo:Suggests},
+Provides:
+ ${cargo:Provides},
+Built-Using: ${cargo:Built-Using}
+Description: Notification proxy for Qubes OS - daemon

@@ -1,4 +1,4 @@
-notification-proxy (1.0.1-1) unstable; urgency=medium
+qubes-notification (1.0.1-1) unstable; urgency=medium
 
   * Fix .qubesbuilder file for debian
   * spec: add missing dist suffix
@@ -7,14 +7,14 @@ notification-proxy (1.0.1-1) unstable; urgency=medium
 
  -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 04 Apr 2024 05:47:11 +0200
 
-notification-proxy (1.0.0-1) unstable; urgency=medium
+qubes-notification (1.0.0-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
   * 
 
  -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 27 Mar 2024 21:28:42 +0100
 
-notification-proxy (0.1.0-1) unstable; urgency=medium
+qubes-notification (0.1.0-1) unstable; urgency=medium
 
   * Initial release.
 
