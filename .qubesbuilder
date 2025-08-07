@@ -21,3 +21,7 @@ vm-bullseye:
 vm-jammy:
   deb:
     build: []
+
+vm-noble:
+  deb:
+    build: []
