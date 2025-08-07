@@ -337,7 +337,7 @@ pub fn sanitize_str(arg: &str) -> String {
 }
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     pub struct Capabilities: u16 {
         const BODY            = 0b00000000001;
         const BODY_HYPERLINKS = 0b00000000010;
@@ -364,7 +364,7 @@ pub struct NotificationEmitter {
 
 impl NotificationEmitter {
     pub fn capabilities(&self) -> Capabilities {
-        self.capabilities
+        self.capabilities.clone()
     }
     pub async fn new(
         prefix: String,
