@@ -1,3 +1,10 @@
+qubes-notification (1.0.3-1) unstable; urgency=medium
+
+  * Allow colon in action name
+  * Automatically restart notification agent on failure
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sat, 09 Aug 2025 01:09:16 +0200
+
 qubes-notification (1.0.2-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
