@@ -64,7 +64,7 @@ fn is_valid_action_name(action: &[u8]) -> bool {
     }
     for i in &action[1..] {
         match i {
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' => {}
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b':' => {}
             _ => return false,
         }
     }
