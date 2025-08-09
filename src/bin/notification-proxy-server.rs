@@ -17,7 +17,7 @@ async fn client_server(qube_name: String) {
     };
     let (emitter, mut server_name_owner_changed) = NotificationEmitter::new(
         qube_name.to_owned() + ": ",
-        "Qubes VM ".to_owned() + &*qube_name,
+        "Qube: ".to_owned() + &*qube_name,
         default_icon,
     )
     .await
