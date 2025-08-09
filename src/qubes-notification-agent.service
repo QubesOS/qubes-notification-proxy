@@ -7,6 +7,8 @@ ConditionGroup=qubes
 ExecStart=/usr/bin/qrexec-client-vm '' qubes.Notifications /usr/bin/qubes-notification-proxy-client
 BusName=org.freedesktop.Notifications
 RestartSec=1s
+RestartMaxDelaySec=30s
+RestartSteps=10
 Restart=always
 RestartPreventExitStatus=126 127
 
