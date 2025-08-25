@@ -60,7 +60,7 @@ but this server only supports version {MINOR_VERSION}"
     let mut closed_stream = closed_stream.expect("Cannot register for closed signals");
     let mut invoked_stream = invoked_stream.expect("Cannot register for invoked signals");
     let stdout_ = stdout.clone();
-    let _handle = tokio::task::spawn_local(async move {
+    let owner_changed_handle = tokio::task::spawn_local(async move {
         while let Some(item) = server_name_owner_changed.next().await {
             let item = item
                 .args()
@@ -73,7 +73,7 @@ but this server only supports version {MINOR_VERSION}"
         }
     });
     let emitter_ = emitter.clone();
-    let _handle = tokio::task::spawn_local(async move {
+    let closed_stream_handle = tokio::task::spawn_local(async move {
         while let Some(item) = closed_stream.next().await {
             let item = match item.args() {
                 Ok(item) => item,
@@ -97,7 +97,7 @@ but this server only supports version {MINOR_VERSION}"
     });
     let stdout_ = stdout.clone();
     let emitter_ = emitter.clone();
-    let _handle = tokio::task::spawn_local(async move {
+    let invoked_stream_handle = tokio::task::spawn_local(async move {
         while let Some(item) = invoked_stream.next().await {
             let item = match item.args() {
                 Ok(item) => item,
@@ -167,6 +167,10 @@ but this server only supports version {MINOR_VERSION}"
             stdout.transmit(&*data).await
         });
     }
+    eprintln!("Leaving loop");
+    invoked_stream_handle.abort();
+    closed_stream_handle.abort();
+    owner_changed_handle.abort();
 }
 
 #[tokio::main(flavor = "current_thread")]
