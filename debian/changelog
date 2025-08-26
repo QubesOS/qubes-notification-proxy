@@ -1,3 +1,9 @@
+qubes-notification (1.0.5-1) unstable; urgency=medium
+
+  * Abort dbus tasks when client disconnects
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 27 Aug 2025 01:36:40 +0200
+
 qubes-notification (1.0.4-1) unstable; urgency=medium
 
   * Adjust application name to use "Qube" term
