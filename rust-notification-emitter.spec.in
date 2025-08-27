@@ -11,6 +11,8 @@ Summary:        Notification proxy for Qubes OS
 License:        GPLv2+
 URL:            https://www.qubes-os.org/
 Source:         notification-emitter.tar.gz
+Requires:       %{name}-agent
+Requires:       %{name}-daemon
 
 BuildRequires:  rust-packaging >= 23
 # FIXME: specify version
@@ -20,6 +22,8 @@ BuildRequires:  systemd-rpm-macros
 Notification proxy for Qubes OS.}
 
 %description %{_description}
+
+%files
 
 %package     -n %{crate}
 Summary:        %{summary}
