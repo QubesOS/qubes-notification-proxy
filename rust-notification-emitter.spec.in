@@ -3,12 +3,6 @@
 
 %global crate notification-emitter
 
-# automatic debuginfo packages do not deal well with subpackages:
-# each subpackage (like -agent-debuginfo) gets dependency on the main debuginfo
-# package, which isn't created
-%global debug_package %{nil}
-
-
 Name:           qubes-notification
 Version:        @VERSION@
 Release:        1%{?dist}
