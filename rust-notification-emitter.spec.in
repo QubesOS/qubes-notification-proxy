@@ -3,12 +3,6 @@
 
 %global crate notification-emitter
 
-# automatic debuginfo packages do not deal well with subpackages:
-# each subpackage (like -agent-debuginfo) gets dependency on the main debuginfo
-# package, which isn't created
-%global debug_package %{nil}
-
-
 Name:           qubes-notification
 Version:        @VERSION@
 Release:        1%{?dist}
@@ -17,6 +11,8 @@ Summary:        Notification proxy for Qubes OS
 License:        GPLv2+
 URL:            https://www.qubes-os.org/
 Source:         notification-emitter.tar.gz
+Requires:       %{name}-agent
+Requires:       %{name}-daemon
 
 BuildRequires:  rust-packaging >= 23
 # FIXME: specify version
@@ -26,6 +22,8 @@ BuildRequires:  systemd-rpm-macros
 Notification proxy for Qubes OS.}
 
 %description %{_description}
+
+%files
 
 %package     -n %{crate}
 Summary:        %{summary}
