@@ -1,3 +1,11 @@
+qubes-notification (1.0.6-1) unstable; urgency=medium
+
+  * Revert "Disable debuginfo packages for now"
+  * rpm: create empty main package to fix debuginfo deps
+  * Wait for GUI session on the server side
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 24 Nov 2025 00:01:20 +0100
+
 qubes-notification (1.0.5-1) unstable; urgency=medium
 
   * Abort dbus tasks when client disconnects
