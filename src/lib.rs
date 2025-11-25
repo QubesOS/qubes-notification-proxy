@@ -122,8 +122,8 @@ pub enum Urgency {
 }
 
 pub const MAX_SIZE: usize = 1usize << 21; // This is 2MiB, more than enough
-pub const MAX_WIDTH: i32 = 255;
-pub const MAX_HEIGHT: i32 = 255;
+pub const MAX_WIDTH: i32 = 256;
+pub const MAX_HEIGHT: i32 = 256;
 
 pub const MAJOR_VERSION: u16 = 1;
 pub const MINOR_VERSION: u16 = 0;
@@ -630,15 +630,15 @@ impl NotificationEmitter {
             // sanitize end
             hints.insert("category", Value::from(category));
         }
-        // Temporarily disabled due to lack of image processing
-        if false {
+        // Temporarily enable to work on image processing
+        // if false {
             if let Some(image) = image {
                 match serialize_image(image) {
                     Ok(value) => hints.insert("image-data", value),
                     Err(e) => return Err(zbus::Error::MissingParameter(e)),
                 };
             }
-        }
+        // }
         let mut escaped_body;
         if self.body_markup() {
             let body = sanitize_str(&*untrusted_body);
