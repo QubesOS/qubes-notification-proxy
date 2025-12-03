@@ -20,8 +20,6 @@ override_dh_auto_install:
 	cp debian/qubes-notification-daemon.substvars \
 		debian/qubes-notification-agent.substvars
 	install -d -- "$(DESTDIR)/etc/qubes-rpc/" "$(DESTDIR)$(SYSTEMDUSERDIR)" "$(DESTDIR)$(SYSTEMDUSERDIR)-preset"
-	install -d -- "$(DESTDIR)/etc/qubes/rpc-config"
 	install -m0644 -- src/qubes-notification-agent.service "$(DESTDIR)$(SYSTEMDUSERDIR)"
 	install -m0644 -- src/90-qubes-notification-agent.preset "$(DESTDIR)$(SYSTEMDUSERDIR)-preset"
 	ln -s -- ../../usr/bin/qubes-notification-proxy-server "$(DESTDIR)/etc/qubes-rpc/qubes.Notifications"
-	echo "wait-for-session=1" > "$(DESTDIR)/etc/qubes/rpc-config/qubes.Notifications"

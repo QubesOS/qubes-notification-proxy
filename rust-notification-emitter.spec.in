@@ -74,7 +74,6 @@ forwards notifications to the host's notification daemon.
 %files daemon
 %{_bindir}/qubes-notification-proxy-server
 /etc/qubes-rpc/qubes.Notifications
-/etc/qubes/rpc-config/qubes.Notifications
 
 %package        license
 Summary:        License files for the notification proxy
@@ -100,13 +99,11 @@ License files for the notification proxy
 
 %install
 install -d -- "$RPM_BUILD_ROOT/etc/qubes-rpc/" "$RPM_BUILD_ROOT/%_userunitdir" "$RPM_BUILD_ROOT/%_userpresetdir"
-install -d -- "$RPM_BUILD_ROOT/etc/qubes/rpc-config"
 install -m0644 -- src/qubes-notification-agent.service "$RPM_BUILD_ROOT/%_userunitdir"
 install -m0644 -- src/90-qubes-notification-agent.preset "$RPM_BUILD_ROOT/%_userpresetdir"
 install -D -- target/release/notification-proxy-client "$RPM_BUILD_ROOT/%_bindir/qubes-notification-proxy-client"
 install -D -- target/release/notification-proxy-server "$RPM_BUILD_ROOT/%_bindir/qubes-notification-proxy-server"
 ln -s -- ../../usr/bin/qubes-notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/qubes.Notifications"
-echo "wait-for-session=1" > "$RPM_BUILD_ROOT/etc/qubes/rpc-config/qubes.Notifications"
 install -m0644 -D -- LICENSE.dependencies "$RPM_BUILD_ROOT/usr/share/licenses/qubes-notification-proxy/LICENSE.dependencies"
 
 %if %{with check}
