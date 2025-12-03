@@ -1,3 +1,9 @@
+qubes-notification (1.0.7-1) unstable; urgency=medium
+
+  * Revert "Wait for GUI session on the server side"
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 03 Dec 2025 21:06:24 +0100
+
 qubes-notification (1.0.6-1) unstable; urgency=medium
 
   * Revert "Disable debuginfo packages for now"
