@@ -1,2 +1,3 @@
 /usr/bin/qubes-notification-proxy-server
 /etc/qubes-rpc/qubes.Notifications
+/etc/qubes/rpc-config/qubes.Notifications
