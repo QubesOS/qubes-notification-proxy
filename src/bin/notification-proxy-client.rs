@@ -73,7 +73,7 @@ fn is_valid_action_name(action: &[u8]) -> zbus::fdo::Result<()> {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Server {
     async fn get_capabilities(&self) -> zbus::fdo::Result<(Vec<String>,)> {
-        Ok((vec!["persistence".to_owned(), "actions".to_owned()],))
+        Ok((vec!["persistence".to_owned(), "actions".to_owned(), "body".to_owned()],))
     }
     #[zbus(signal)]
     async fn notification_closed(
