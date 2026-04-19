@@ -43,16 +43,10 @@ async fn client_server(qube_name: String) {
         .expect("Cannot read reply")
         .to_le();
     let (reply_major, reply_minor) = notification_emitter::split_version(reply_version);
-    if reply_major != MAJOR_VERSION {
+    if reply_major != MAJOR_VERSION ||  reply_minor > MINOR_VERSION {
         panic!(
-            "Version mismatch: client supports version {reply_major} \
-            but the version supported by this server is {MAJOR_VERSION}"
-        );
-    }
-    if reply_minor > MINOR_VERSION {
-        panic!(
-            "Version mismatch: client supports version {reply_minor} \
-but this server only supports version {MINOR_VERSION}"
+            "Version mismatch: client supports version {reply_major}.{reply_minor} \
+but this server only supports version {MAJOR_VERSION}.{MINOR_VERSION}"
         );
     }
     let stdout = MessageWriter::new();
@@ -164,7 +158,7 @@ but this server only supports version {MINOR_VERSION}"
                     }
                 })
                 .expect("Serialization failed?");
-            stdout.transmit(&*data).await
+            stdout.transmit(&*data).await;
         });
     }
     eprintln!("Leaving loop");

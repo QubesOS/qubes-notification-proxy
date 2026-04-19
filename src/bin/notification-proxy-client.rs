@@ -102,7 +102,7 @@ impl Server {
         // Ignored.  We pass an empty string.
         _app_name: &str,
         replaces_id: u32,
-        _app_icon: String,
+        app_icon: String,
         summary: String,
         body: String,
         actions: Vec<String>,
@@ -119,6 +119,9 @@ impl Server {
         let mut urgency = None;
         let mut resident = false;
         let mut category = None;
+        if !app_icon.is_empty() {
+            eprintln!("app_icon parameter is not yet supported")
+        }
         for (i, j) in hints.into_iter() {
             match &*i {
                 "action-icons" => {}
