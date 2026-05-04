@@ -75,6 +75,10 @@ impl Server {
     async fn get_capabilities(&self) -> zbus::fdo::Result<(Vec<String>,)> {
         Ok((vec!["persistence".to_owned(), "actions".to_owned(), "body".to_owned()],))
     }
+    async fn close_notification(&self, _id: u32) -> zbus::fdo::Result<()> {
+        // FIXME proxy to server (which will proxy back NotificationClosed)
+        Ok(())
+    }
     #[zbus(signal)]
     async fn notification_closed(
         &self,
