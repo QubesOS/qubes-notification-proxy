@@ -1,3 +1,10 @@
+qubes-notification (1.1.1-1) unstable; urgency=medium
+
+  [ Corey Ford ]
+  * Stub CloseNotification method
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 11 May 2026 23:37:39 +0200
+
 qubes-notification (1.1.0-1) unstable; urgency=medium
 
   * 
