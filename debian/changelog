@@ -1,3 +1,15 @@
+qubes-notification (1.1.2-1) unstable; urgency=medium
+
+  [ Marek Marczykowski-Górecki ]
+  * Bump required nix version
+  * debian: adjust rules for dh-cargo in forky
+
+  [ Janik Besendorf ]
+  * Add Arch Linux packaging
+  * archlinux: add qubes-vm-utils build dependency
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 24 Aug 2026 22:06:01 +0200
+
 qubes-notification (1.1.1-1) unstable; urgency=medium
 
   [ Corey Ford ]
