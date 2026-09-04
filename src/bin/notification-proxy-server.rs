@@ -8,17 +8,24 @@ use std::rc::Rc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 async fn client_server(qube_name: String) {
-    let default_icon = match qube_icon(qube_name.to_owned()) {
-        Ok(value) => value,
+    let (default_icon, mark) = match qube_icon(&qube_name) {
+        Ok(icon_name) => match notification_emitter::qube_mark(&icon_name) {
+            Ok(mark) => (icon_name, Some(mark)),
+            Err(e) => {
+                eprintln!("No mark for {qube_name} ({e}); images from it will be dropped");
+                (icon_name, None)
+            }
+        },
         Err(e) => {
-            eprintln!("Failed to get qube {qube_name} icon: {e}");
-            "".to_string()
+            eprintln!("Failed to get qube {qube_name} icon: {e}; images from it will be dropped");
+            (String::new(), None)
         }
     };
     let (emitter, mut server_name_owner_changed) = NotificationEmitter::new(
-        qube_name.to_owned() + ": ",
-        "Qube: ".to_owned() + &*qube_name,
+        format!("{qube_name}: "),
+        format!("Qube: {qube_name}"),
         default_icon,
+        mark,
     )
     .await
     .expect("Cannot connect to notifcation daemon");

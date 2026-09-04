@@ -15,6 +15,7 @@ Build-Depends: debhelper (>= 12),
  librust-serde-dev (>= 1.0.185),
  librust-serde-derive-dev (>= 1.0.185),
  librust-tokio-dev (>= 1.29.1),
+ librust-png-dev (>= 0.17),
  librust-zbus-dev (>= 5.0.0),
  libqubes-pure-dev,
 Standards-Version: 4.6.1

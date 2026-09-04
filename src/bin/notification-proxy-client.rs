@@ -1,12 +1,12 @@
 use bincode::Options;
 use futures_channel::oneshot::Sender;
-use notification_emitter::{ImageParameters, ReplyMessage, MAX_MESSAGE_SIZE};
+use notification_emitter::{Hints, ReplyMessage, MAX_MESSAGE_SIZE};
 use notification_emitter::{Message, Notification, Urgency, MAJOR_VERSION, MINOR_VERSION};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use zbus::zvariant::{DeserializeDict, SerializeDict, Type, Value};
+use zbus::zvariant::Value;
 use zbus::object_server::SignalEmitter;
 
 #[derive(Debug)]
@@ -16,20 +16,6 @@ struct ServerInner {
 }
 
 struct Server(Arc<Mutex<ServerInner>>, core::sync::atomic::AtomicU64);
-
-#[derive(SerializeDict, DeserializeDict, Type)]
-#[zvariant(signature = "a{sv}")]
-struct Hints {
-    #[zvariant(rename = "action-icons")]
-    action_icons: Option<bool>,
-    category: Option<String>,
-    #[zvariant(rename = "desktop-entry")]
-    desktop_entry: Option<String>,
-    #[zvariant(rename = "image-data")]
-    image_data: Option<ImageParameters>,
-    #[zvariant(rename = "image_data")]
-    image_data_deprecated1: Option<ImageParameters>,
-}
 
 macro_rules! log_return {
     ($($arg:tt),*$(,)?) => {{
@@ -110,20 +96,25 @@ impl Server {
         summary: String,
         body: String,
         actions: Vec<String>,
-        hints: HashMap<String, zbus::zvariant::Value<'_>>,
+        hints: Hints<'_>,
         expire_timeout: i32,
     ) -> zbus::fdo::Result<u32> {
         let options = bincode::DefaultOptions::new()
             .with_fixint_encoding()
             .with_native_endian()
             .reject_trailing_bytes();
-        let mut image: Option<ImageParameters> = None;
+        // Shrink what the application sent.
+        let mut image = match hints.image {
+            Some(untrusted_image) => notification_emitter::fit_app_image(untrusted_image),
+            None => None,
+        };
+        let mut image_path: Option<String> = None;
         let mut suppress_sound = false;
         let mut transient = false;
         let mut urgency = None;
         let mut resident = false;
         let mut category = None;
-        for (i, j) in hints.into_iter() {
+        for (i, j) in hints.other {
             match &*i {
                 "action-icons" => {}
                 "category" => {
@@ -136,34 +127,16 @@ impl Server {
                 "desktop-entry" => {}
                 // Deprecated, not yet implemented
                 "image_data" | "icon_data" => {}
-                // Also deprecated, and also NYI
-                "image_path" => {}
-                // This requires processing FreeDesktop icon themes.
-                // This is also needed for SNI so it needs to be
-                // implemented.
-                "image-path" => eprintln!("Not yet implemented: Image paths"),
-                "image-data" => {
-                    let (
-                        untrusted_width,
-                        untrusted_height,
-                        untrusted_rowstride,
-                        untrusted_has_alpha,
-                        untrusted_bits_per_sample,
-                        untrusted_channels,
-                        untrusted_data,
-                    ) = j
-                        .try_into()
-                        .map_err(|f: zbus::zvariant::Error| zbus::fdo::Error::ZBus(f.into()))?;
-                    image = Some(ImageParameters {
-                        untrusted_width,
-                        untrusted_height,
-                        untrusted_rowstride,
-                        untrusted_has_alpha,
-                        untrusted_bits_per_sample,
-                        untrusted_channels,
-                        untrusted_data,
-                    })
-                }
+                // The deprecated spelling names the same hint, but loses to
+                // the current one if a qube sends both.
+                "image-path" | "image_path" => match String::try_from(j) {
+                    Ok(path) => {
+                        if &*i == "image-path" || image_path.is_none() {
+                            image_path = Some(path)
+                        }
+                    }
+                    Err(e) => eprintln!("Ignoring malformed image path hint: {e}"),
+                },
                 "sound-file" => {
                     eprintln!("Not yet implemented: Sound files (got {:?})", j)
                 }
@@ -184,6 +157,11 @@ impl Server {
                 _ => {
                     eprintln!("Unknown hint {:?}, ignoring", &*i);
                 }
+            }
+        }
+        if image.is_none() {
+            if let Some(untrusted_path) = image_path {
+                image = notification_emitter::resolve_image_path(&untrusted_path);
             }
         }
         let id = self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

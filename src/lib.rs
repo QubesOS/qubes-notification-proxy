@@ -19,6 +19,12 @@ use zbus::{
 };
 mod maps;
 use maps::{GuestId, HostId, Maps};
+mod badge;
+pub use badge::Image;
+mod icon;
+pub use icon::resolve_image_path;
+mod hints;
+pub use hints::Hints;
 #[proxy(
     interface = "org.freedesktop.Notifications",
     default_service = "org.freedesktop.Notifications",
@@ -122,8 +128,16 @@ pub enum Urgency {
 }
 
 pub const MAX_SIZE: usize = 1usize << 21; // This is 2MiB, more than enough
-pub const MAX_WIDTH: i32 = 255;
-pub const MAX_HEIGHT: i32 = 255;
+pub const MAX_WIDTH: i32 = 512;
+pub const MAX_HEIGHT: i32 = 512;
+pub(crate) const MAX_APP_IMAGE_SIDE: u32 = 2048;
+
+/// Images longer than this on a side are scaled down before they are sent.
+pub(crate) const MAX_ICON_SIDE: u32 = if MAX_WIDTH < MAX_HEIGHT {
+    MAX_WIDTH as u32
+} else {
+    MAX_HEIGHT as u32
+};
 
 pub const MAJOR_VERSION: u16 = 1;
 pub const MINOR_VERSION: u16 = 0;
@@ -155,11 +169,36 @@ pub struct ImageParameters {
     pub untrusted_data: Vec<u8>,
 }
 
+/// Tightly packed RGBA8, the one layout this crate itself produces:
+/// rowstride is exactly `width * 4`.
+impl From<badge::Image> for ImageParameters {
+    fn from(image: badge::Image) -> Self {
+        ImageParameters {
+            untrusted_width: image.width as i32,
+            untrusted_height: image.height as i32,
+            untrusted_rowstride: image.width as i32 * 4,
+            untrusted_has_alpha: true,
+            untrusted_bits_per_sample: 8,
+            untrusted_channels: 4,
+            untrusted_data: image.data,
+        }
+    }
+}
+
 const MAX_LINES: usize = 500;
 const MAX_CHARS_PER_LINE: usize = 1000;
 
-fn serialize_image(
-    ImageParameters {
+fn validate_guest_image(untrusted_image: ImageParameters) -> Result<badge::Image, &'static str> {
+    unpack_image(untrusted_image, MAX_WIDTH, MAX_HEIGHT, MAX_SIZE)
+}
+
+fn unpack_image(
+    untrusted_image: ImageParameters,
+    max_width: i32,
+    max_height: i32,
+    max_bytes: usize,
+) -> Result<badge::Image, &'static str> {
+    let ImageParameters {
         untrusted_width,
         untrusted_height,
         untrusted_rowstride,
@@ -167,10 +206,7 @@ fn serialize_image(
         untrusted_bits_per_sample,
         untrusted_channels,
         untrusted_data,
-    }: ImageParameters,
-) -> Result<Value<'static>, &'static str> {
-    // sanitize start
-
+    } = untrusted_image;
     // booleans do not need to be sanitized
     let has_alpha = untrusted_has_alpha;
 
@@ -179,10 +215,8 @@ fn serialize_image(
         return Err("Wrong number of bits per sample");
     }
 
-    let bits_per_sample = untrusted_bits_per_sample;
-
     // data cannot be too long
-    if untrusted_data.len() > MAX_SIZE {
+    if untrusted_data.len() > max_bytes {
         return Err("Too much data");
     }
 
@@ -201,7 +235,7 @@ fn serialize_image(
     }
 
     // check that the image is not too large
-    if untrusted_width > MAX_WIDTH || untrusted_height > MAX_HEIGHT {
+    if untrusted_width > max_width || untrusted_height > max_height {
         return Err("Width or height too large");
     }
 
@@ -218,17 +252,34 @@ fn serialize_image(
     let height = untrusted_height;
     let width = untrusted_width;
     let rowstride = untrusted_rowstride;
-    // sanitize end
 
-    return Ok(Value::from((
-        width,
-        height,
-        rowstride,
-        has_alpha,
-        bits_per_sample,
-        channels,
-        data,
-    )));
+    let mut image = badge::Image::new(width as u32, height as u32);
+    for (y, row) in data.chunks_exact(rowstride as usize).take(height as usize).enumerate() {
+        for (x, px) in row.chunks_exact(channels as usize).take(width as usize).enumerate() {
+            let alpha = if has_alpha { px[3] } else { 0xFF };
+            image.set_pixel(x as u32, y as u32, [px[0], px[1], px[2], alpha]);
+        }
+    }
+    Ok(image)
+}
+
+pub fn fit_app_image(untrusted_image: ImageParameters) -> Option<ImageParameters> {
+    let (claimed_width, claimed_height) = (
+        untrusted_image.untrusted_width,
+        untrusted_image.untrusted_height,
+    );
+    let side = MAX_APP_IMAGE_SIDE as i32;
+    let bytes = (MAX_APP_IMAGE_SIDE as usize) * (MAX_APP_IMAGE_SIDE as usize) * 4;
+    match unpack_image(untrusted_image, side, side, bytes) {
+        Ok(image) => Some(ImageParameters::from(badge::shrink_to(image, MAX_ICON_SIDE))),
+        Err(e) => {
+            eprintln!(
+                "Dropping unusable image from application: {e} \
+                (claimed {claimed_width}x{claimed_height})"
+            );
+            None
+        }
+    }
 }
 
 #[cfg(feature = "unicode")]
@@ -250,7 +301,7 @@ fn validate_code_point(code_point: u32) -> bool {
     }
 }
 
-fn qubesd_client(method: String, dest: String) -> Result<Vec<u8>, std::io::Error> {
+fn qubesd_client(method: &str, dest: &str) -> Result<Vec<u8>, std::io::Error> {
     if Path::new("/usr/bin/qrexec-client-vm").exists() {
         let output = Command::new("/usr/bin/qrexec-client-vm")
             .arg(dest)
@@ -275,19 +326,37 @@ fn qubesd_client(method: String, dest: String) -> Result<Vec<u8>, std::io::Error
     }
 }
 
-pub fn qube_icon(name: String) -> Result<String, std::io::Error> {
-    let qubesd_answer = qubesd_client("admin.vm.property.Get+icon".to_string(), name)?;
-    return match qubesd_answer[0..2] {
-        [b'0', 0] => Ok(String::from_utf8(qubesd_answer[2..].to_vec())
-            .expect("Invalid UTF-8 in label name")
-            .split(' ') // skip default=... type=...
-            .last()
-            .unwrap()
-            .to_string()),
+fn qubesd_value(method: &str, dest: &str) -> Result<String, std::io::Error> {
+    let answer = qubesd_client(method, dest)?;
+    match answer.get(0..2) {
+        Some([b'0', 0]) => {
+            let payload = match String::from_utf8(answer[2..].to_vec()) {
+                Ok(payload) => payload,
+                Err(e) => {
+                    return Err(std::io::Error::other(format!(
+                        "Admin API returned non-UTF-8: {e}"
+                    )))
+                }
+            };
+            Ok(payload.trim().rsplit(' ').next().unwrap().to_owned())
+        }
         _ => Err(std::io::Error::other(format!(
-            "Admin API call failed: {qubesd_answer:?}"
+            "Admin API call failed: {answer:?}"
         ))),
-    };
+    }
+}
+
+pub fn qube_icon(name: &str) -> Result<String, std::io::Error> {
+    qubesd_value("admin.vm.property.Get+icon", name)
+}
+
+pub fn qube_mark(icon_name: &str) -> Result<badge::Image, std::io::Error> {
+    match icon::qube_icon_image(icon_name) {
+        Some(icon) => Ok(badge::fit_mark(&icon)),
+        None => Err(std::io::Error::other(format!(
+            "cannot load icon {icon_name:?} or its appvm fallback from the icon theme"
+        ))),
+    }
 }
 
 /// This imposes the following restrictions:
@@ -359,6 +428,7 @@ pub struct NotificationEmitter {
     prefix: String,
     application_name: String,
     default_icon: String,
+    mark: Option<badge::Image>,
     maps: std::cell::RefCell<Maps>,
 }
 
@@ -370,6 +440,7 @@ impl NotificationEmitter {
         prefix: String,
         application_name: String,
         default_icon: String,
+        mark: Option<badge::Image>,
     ) -> zbus::Result<(Self, NameOwnerChangedStream)> {
         let connection = Connection::session().await?;
         let (proxy, notification_proxy) = futures_util::future::join(
@@ -416,6 +487,7 @@ impl NotificationEmitter {
                 prefix,
                 application_name,
                 default_icon,
+                mark,
                 maps: Default::default(),
             },
             proxy,
@@ -630,13 +702,20 @@ impl NotificationEmitter {
             // sanitize end
             hints.insert("category", Value::from(category));
         }
-        // Temporarily disabled due to lack of image processing
-        if false {
-            if let Some(image) = image {
-                match serialize_image(image) {
-                    Ok(value) => hints.insert("image-data", value),
-                    Err(e) => return Err(zbus::Error::MissingParameter(e)),
-                };
+        // Without a mark the image is dropped; the server already said so
+        // at startup.
+        if let (Some(untrusted_image), Some(mark)) = (image, self.mark.as_ref()) {
+            let untrusted_width = untrusted_image.untrusted_width;
+            let untrusted_height = untrusted_image.untrusted_height;
+            match validate_guest_image(untrusted_image) {
+                Ok(base) => {
+                    let marked = ImageParameters::from(badge::compose(&base, mark));
+                    hints.insert("image-data", Value::from(marked));
+                }
+                Err(e) => eprintln!(
+                    "Ignoring unusable image from guest: {e} \
+                    (claimed {untrusted_width}x{untrusted_height})"
+                ),
             }
         }
         let mut escaped_body;
@@ -776,6 +855,22 @@ mod tests {
         assert_eq!(long_sanitized, cmp);
     }
 
+    /// Firefox sends 256x256 icons for web notifications.
+    #[test]
+    fn accepts_web_notification_icon_sizes() {
+        let img = validate_guest_image(ImageParameters {
+            untrusted_width: 256,
+            untrusted_height: 256,
+            untrusted_rowstride: 1024,
+            untrusted_has_alpha: true,
+            untrusted_bits_per_sample: 8,
+            untrusted_channels: 4,
+            untrusted_data: vec![0; 256 * 1024],
+        })
+        .unwrap();
+        assert_eq!((img.width, img.height), (256, 256));
+    }
+
     #[test]
     fn test_image_validation() {
         let image = ImageParameters {
@@ -787,14 +882,38 @@ mod tests {
             untrusted_channels: 4,
             untrusted_data: vec![0, 0, 0, 0],
         };
-        let v = serialize_image(image.clone()).unwrap();
-        assert_eq!(v.value_signature(), "(iiibiiay)");
+        let img = validate_guest_image(image.clone()).unwrap();
+        // Unpacked at its own size; normalising is `badge::compose`'s job.
+        assert_eq!((img.width, img.height), (1, 1));
         assert_eq!(
-            v,
-            Value::from((1i32, 1i32, 4i32, true, 8, 4, vec![0u8, 0, 0, 0],))
+            Value::from(ImageParameters::from(img)).value_signature(),
+            "(iiibiiay)"
         );
+
+        // A multi-row image with a padded row stride: the pad bytes must be
+        // skipped so every unpacked pixel is the real one.  This is the case
+        // the chunks_exact unpack exists for, and 1x1 tests never reach it.
+        let padded = validate_guest_image(ImageParameters {
+            untrusted_width: 2,
+            untrusted_height: 2,
+            untrusted_rowstride: 8, // 2px * 3ch = 6, plus 2 pad bytes
+            untrusted_has_alpha: false,
+            untrusted_channels: 3,
+            untrusted_data: vec![
+                1, 2, 3, 4, 5, 6, 99, 99, // row 0: two pixels then padding
+                7, 8, 9, 10, 11, 12, 99, 99, // row 1
+            ],
+            ..image.clone()
+        })
+        .unwrap();
+        assert_eq!((padded.width, padded.height), (2, 2));
+        assert_eq!(padded.pixel(0, 0), [1, 2, 3, 0xFF], "first pixel, alpha filled");
+        assert_eq!(padded.pixel(1, 0), [4, 5, 6, 0xFF], "second pixel, not the pad");
+        assert_eq!(padded.pixel(0, 1), [7, 8, 9, 0xFF], "next row starts after pad");
+        assert_eq!(padded.pixel(1, 1), [10, 11, 12, 0xFF]);
+
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_width: 0,
                 ..image.clone()
             })
@@ -802,7 +921,7 @@ mod tests {
             "Too small width, height, or stride"
         );
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_height: 0,
                 ..image.clone()
             })
@@ -810,7 +929,7 @@ mod tests {
             "Too small width, height, or stride"
         );
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_rowstride: 3,
                 ..image.clone()
             })
@@ -818,21 +937,21 @@ mod tests {
             "Too small width, height, or stride"
         );
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_has_alpha: false,
                 ..image.clone()
             })
             .unwrap_err(),
             "Wrong number of channels"
         );
-        serialize_image(ImageParameters {
+        validate_guest_image(ImageParameters {
             untrusted_has_alpha: false,
             untrusted_channels: 3,
             ..image.clone()
         })
         .unwrap();
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_has_alpha: false,
                 untrusted_channels: 4,
                 ..image.clone()
@@ -842,7 +961,7 @@ mod tests {
         );
 
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_width: MAX_WIDTH + 1,
                 ..image.clone()
             })
@@ -851,7 +970,7 @@ mod tests {
         );
 
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_height: MAX_HEIGHT + 1,
                 ..image.clone()
             })
@@ -860,7 +979,7 @@ mod tests {
         );
 
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_rowstride: 4,
                 untrusted_width: 2,
                 untrusted_data: vec![0; 8],
@@ -871,7 +990,7 @@ mod tests {
         );
 
         assert_eq!(
-            serialize_image(ImageParameters {
+            validate_guest_image(ImageParameters {
                 untrusted_data: vec![0; 3],
                 ..image.clone()
             })
