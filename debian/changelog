@@ -1,3 +1,13 @@
+qubes-notification (1.2.0-1) unstable; urgency=medium
+
+  [ Mariusz Zaborski ]
+  * Mark notifications with the source qube's colour
+
+  [ Marek Marczykowski-Górecki ]
+  * archlinux: add png to Cargo.lock
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 22 Sep 2026 18:03:05 +0200
+
 qubes-notification (1.1.2-1) unstable; urgency=medium
 
   [ Marek Marczykowski-Górecki ]
