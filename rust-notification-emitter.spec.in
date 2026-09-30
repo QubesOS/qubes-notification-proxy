@@ -61,6 +61,7 @@ which forwards notifications from guest processes to the host.
 %{_bindir}/qubes-notification-proxy-client
 %_userunitdir/qubes-notification-agent.service
 %_userpresetdir/90-qubes-notification-agent.preset
+%{_systemdusergeneratordir}/qubes-notification-agent-generator
 
 %package        daemon
 Summary:        Host-side part of the notification proxy
@@ -103,6 +104,7 @@ install -d -- "$RPM_BUILD_ROOT/etc/qubes-rpc/" "$RPM_BUILD_ROOT/%_userunitdir" "
 install -d -- "$RPM_BUILD_ROOT/etc/qubes/rpc-config"
 install -m0644 -- src/qubes-notification-agent.service "$RPM_BUILD_ROOT/%_userunitdir"
 install -m0644 -- src/90-qubes-notification-agent.preset "$RPM_BUILD_ROOT/%_userpresetdir"
+install -D -m0755 -- src/qubes-notification-agent-generator "$RPM_BUILD_ROOT/%{_systemdusergeneratordir}/qubes-notification-agent-generator"
 install -D -- target/release/notification-proxy-client "$RPM_BUILD_ROOT/%_bindir/qubes-notification-proxy-client"
 install -D -- target/release/notification-proxy-server "$RPM_BUILD_ROOT/%_bindir/qubes-notification-proxy-server"
 ln -s -- ../../usr/bin/qubes-notification-proxy-server "$RPM_BUILD_ROOT/etc/qubes-rpc/qubes.Notifications"

@@ -54,6 +54,8 @@ package() {
         "${pkgdir}/usr/lib/systemd/user/qubes-notification-agent.service"
     install -Dm0644 src/90-qubes-notification-agent.preset \
         "${pkgdir}/usr/lib/systemd/user-preset/90-qubes-notification-agent.preset"
+    install -Dm0755 src/qubes-notification-agent-generator \
+        "${pkgdir}/usr/lib/systemd/user-generators/qubes-notification-agent-generator"
 }
 
 # vim:set ts=2 sw=2 et:

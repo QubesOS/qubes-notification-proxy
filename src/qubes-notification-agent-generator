@@ -1,0 +1,5 @@
+#!/bin/sh
+# Let local notification daemon own the bus name
+if [ -e /var/run/qubes-service/guivm ]; then
+    ln -sf /dev/null "$1/qubes-notification-agent.service"
+fi
